@@ -12,11 +12,16 @@ endif()
 project ("CppInterp")
 
 # 将源代码添加到此项目的可执行文件。
-add_executable (CppInterp "src/main.cpp" )
+add_executable (CppInterp "src/main.cpp"  "include/Lexer.h" "src/Lexer.cpp" )
+
+target_include_directories(CppInterp PRIVATE include)
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET CppInterp PROPERTY CXX_STANDARD 20)
 endif()
 
 # TODO: 如有需要，请添加测试并安装目标。
-add_subdirectory(test)
+add_subdirectory(UnitTest)
+add_subdirectory(Common)
+
+target_link_libraries(CppInterp PUBLIC Common)
