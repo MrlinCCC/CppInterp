@@ -47,7 +47,7 @@ namespace CppInterp {
 		constexpr Type COLON = 27;           // :
 		constexpr Type QUESTION = 28;        // ?
 		constexpr Type DOT = 29;             // .
-		constexpr Type BACKSLASH = 30;       // \	
+		//constexpr Type BACKSLASH = 30;       // \	
 
 		// multiple symbol
 		constexpr Type SELF_ADD = 31;        // +=
@@ -112,6 +112,7 @@ namespace CppInterp {
 	}
 
 	class CharacterSet :public Singleton<CharacterSet> {
+		friend class ::Singleton<CharacterSet>;
 	public:
 		inline std::optional<Character::Type> GetCharacterType(char ch) const {
 			auto it = m_characterSet.find(ch);
@@ -127,6 +128,7 @@ namespace CppInterp {
 	};
 
 	class EscapeCharacterSet : public Singleton<EscapeCharacterSet> {
+		friend class ::Singleton<EscapeCharacterSet>;
 	public:
 		inline bool IsEscapeCharacter(char ch) const {
 			return m_escapeCharacterSet.find(ch) != m_escapeCharacterSet.end();
@@ -157,6 +159,9 @@ namespace CppInterp {
 		int m_column;
 
 		Token() :m_type(TokenType::UNKNOWN), m_content(""), m_line(0), m_column(0) {}
+		Token(TokenType::Type type, const std::string& content, int line, int column)
+			:m_type(type), m_content(content), m_line(line), m_column(column) {
+		}
 	};
 
 	namespace State {
@@ -184,7 +189,6 @@ namespace CppInterp {
 		constexpr Type XOR = 20;
 		constexpr Type COLON = 21;
 		constexpr Type COMMENT = 22;
-		constexpr Type BACKSLASH = 23;
 	};
 
 	constexpr int StateSize = 24;
@@ -192,6 +196,7 @@ namespace CppInterp {
 	enum class Action {
 		FORWARD,
 		RETRACT,
+		APPEND, //FORWARD + RETRACT
 		JUMP,
 		CLEAR,
 		NEWLINE,
