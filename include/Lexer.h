@@ -68,6 +68,10 @@ namespace CppInterp {
 		constexpr Type DECREMENT = 46;       // --
 		constexpr Type POINT_TO = 47;        // ->
 		constexpr Type BELONG_TO = 48;       // ::
+		constexpr Type RIGHT_MOVE = 48;       // >>
+		constexpr Type LEFT_MOVE = 49;        // <<
+		constexpr Type SELF_RIGHT_MOVE = 50;  // >>=
+		constexpr Type SELF_LEFT_MOVE = 51;   // <<=
 	}
 
 
@@ -188,10 +192,12 @@ namespace CppInterp {
 		constexpr Type BIT_OR = 19;
 		constexpr Type XOR = 20;
 		constexpr Type COLON = 21;
-		constexpr Type COMMENT = 22;
+		constexpr Type RIGHT_MOVE = 22;
+		constexpr Type LEFT_MOVE = 23;
+		constexpr Type COMMENT = 24;
 	};
 
-	constexpr int StateSize = 24;
+	constexpr int StateSize = 25;
 
 	enum class Action {
 		FORWARD,

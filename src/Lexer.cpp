@@ -108,15 +108,17 @@ namespace CppInterp {
 		const auto& escapeCharacterSet = EscapeCharacterSet::Instance().GetEscapeCharacterSet();
 		auto& characterSet = CharacterSet::Instance();
 		for (auto [ch, escapeCh] : escapeCharacterSet) {
-			m_stateTransitionTable[State::CHAR_ESCAPE].emplace(
-				*characterSet.GetCharacterType(ch), Transition(State::CHAR_END, TokenType::CHARACTER_LITERAL, Action::ESCAPE)
-			);
+			auto escapeOpt = characterSet.GetCharacterType(ch);
+			if (escapeOpt)
+				m_stateTransitionTable[State::CHAR_ESCAPE].emplace(
+					*escapeOpt, Transition(State::CHAR_END, TokenType::CHARACTER_LITERAL, Action::ESCAPE)
+				);
 		}
 		m_stateOtherTransitionTable.emplace(
 			State::CHAR_BEGIN, Transition(State::CHAR_END, TokenType::CHARACTER_LITERAL, Action::FORWARD)
 		);
 		m_stateTransitionTable[State::CHAR_END].emplace(
-			Character::SINGLE_QUOTE, Transition(State::START, TokenType::CHARACTER_LITERAL, Action::RETRACT)
+			Character::SINGLE_QUOTE, Transition(State::START, TokenType::CHARACTER_LITERAL, Action::APPEND)
 		);
 		// string
 		m_stateTransitionTable[State::START].emplace(
@@ -129,12 +131,17 @@ namespace CppInterp {
 			Character::BACKSLASH, Transition(State::STRING_ESCAPE, TokenType::STRING_LITERAL, Action::FORWARD)
 		);
 		for (auto [ch, escapeCh] : escapeCharacterSet) {
-			m_stateTransitionTable[State::STRING_ESCAPE].emplace(
-				*characterSet.GetCharacterType(ch), Transition(State::STRING, TokenType::STRING_LITERAL, Action::ESCAPE)
-			);
+			auto escapeOpt = characterSet.GetCharacterType(ch);
+			if (escapeOpt)
+				m_stateTransitionTable[State::STRING_ESCAPE].emplace(
+					*escapeOpt, Transition(State::STRING, TokenType::STRING_LITERAL, Action::ESCAPE)
+				);
 		}
+		m_stateOtherTransitionTable.emplace(
+			State::STRING, Transition(State::STRING, TokenType::STRING_LITERAL, Action::FORWARD)
+		);
 		m_stateTransitionTable[State::STRING].emplace(
-			Character::DOUBLE_QUOTE, Transition(State::START, TokenType::STRING_LITERAL, Action::RETRACT)
+			Character::DOUBLE_QUOTE, Transition(State::START, TokenType::STRING_LITERAL, Action::APPEND)
 		);
 		//split
 		m_stateTransitionTable[State::START].emplace(
@@ -152,10 +159,10 @@ namespace CppInterp {
 			State::ADD, Transition(State::START, TokenType::ADD, Action::RETRACT)
 		);
 		m_stateTransitionTable[State::ADD].emplace(
-			Character::ADD, Transition(State::START, TokenType::INCREMENT, Action::RETRACT)
+			Character::ADD, Transition(State::START, TokenType::INCREMENT, Action::APPEND)
 		);
 		m_stateTransitionTable[State::ADD].emplace(
-			Character::ASSIGN, Transition(State::START, TokenType::SELF_ADD, Action::RETRACT)
+			Character::ASSIGN, Transition(State::START, TokenType::SELF_ADD, Action::APPEND)
 		);
 		// -
 		m_stateTransitionTable[State::START].emplace(
@@ -165,10 +172,10 @@ namespace CppInterp {
 			State::SUBTRACT, Transition(State::START, TokenType::SUBTRACT, Action::RETRACT)
 		);
 		m_stateTransitionTable[State::SUBTRACT].emplace(
-			Character::SUBTRACT, Transition(State::START, TokenType::DECREMENT, Action::RETRACT)
+			Character::SUBTRACT, Transition(State::START, TokenType::DECREMENT, Action::APPEND)
 		);
 		m_stateTransitionTable[State::SUBTRACT].emplace(
-			Character::ASSIGN, Transition(State::START, TokenType::SELF_SUB, Action::RETRACT)
+			Character::ASSIGN, Transition(State::START, TokenType::SELF_SUB, Action::APPEND)
 		);
 		// *
 		m_stateTransitionTable[State::START].emplace(
@@ -178,7 +185,7 @@ namespace CppInterp {
 			State::MULTIPLY, Transition(State::START, TokenType::MULTIPLY, Action::RETRACT)
 		);
 		m_stateTransitionTable[State::MULTIPLY].emplace(
-			Character::ASSIGN, Transition(State::START, TokenType::SELF_MUL, Action::RETRACT)
+			Character::ASSIGN, Transition(State::START, TokenType::SELF_MUL, Action::APPEND)
 		);
 		// /
 		m_stateTransitionTable[State::START].emplace(
@@ -188,7 +195,7 @@ namespace CppInterp {
 			State::DIVIDE, Transition(State::START, TokenType::DIVIDE, Action::RETRACT)
 		);
 		m_stateTransitionTable[State::DIVIDE].emplace(
-			Character::ASSIGN, Transition(State::START, TokenType::SELF_DIV, Action::RETRACT)
+			Character::ASSIGN, Transition(State::START, TokenType::SELF_DIV, Action::APPEND)
 		);
 		// %
 		m_stateTransitionTable[State::START].emplace(
@@ -198,7 +205,7 @@ namespace CppInterp {
 			State::MODULO, Transition(State::START, TokenType::MODULO, Action::RETRACT)
 		);
 		m_stateTransitionTable[State::MODULO].emplace(
-			Character::ASSIGN, Transition(State::START, TokenType::SELF_MODULO, Action::RETRACT)
+			Character::ASSIGN, Transition(State::START, TokenType::SELF_MODULO, Action::APPEND)
 		);
 		// >
 		m_stateTransitionTable[State::START].emplace(
@@ -208,7 +215,16 @@ namespace CppInterp {
 			State::GREATER, Transition(State::START, TokenType::GREATER, Action::RETRACT)
 		);
 		m_stateTransitionTable[State::GREATER].emplace(
-			Character::ASSIGN, Transition(State::START, TokenType::GREATER_EQUAL, Action::RETRACT)
+			Character::ASSIGN, Transition(State::START, TokenType::GREATER_EQUAL, Action::APPEND)
+		);
+		m_stateTransitionTable[State::GREATER].emplace(
+			Character::GREATER, Transition(State::RIGHT_MOVE, TokenType::RIGHT_MOVE, Action::FORWARD)
+		);
+		m_stateTransitionTable[State::RIGHT_MOVE].emplace(
+			Character::ASSIGN, Transition(State::START, TokenType::SELF_RIGHT_MOVE, Action::APPEND)
+		);
+		m_stateOtherTransitionTable.emplace(
+			State::RIGHT_MOVE, Transition(State::START, TokenType::RIGHT_MOVE, Action::RETRACT)
 		);
 		// <
 		m_stateTransitionTable[State::START].emplace(
@@ -218,7 +234,16 @@ namespace CppInterp {
 			State::LESS, Transition(State::START, TokenType::LESS, Action::RETRACT)
 		);
 		m_stateTransitionTable[State::LESS].emplace(
-			Character::ASSIGN, Transition(State::START, TokenType::LESS_EQUAL, Action::RETRACT)
+			Character::ASSIGN, Transition(State::START, TokenType::LESS_EQUAL, Action::APPEND)
+		);
+		m_stateTransitionTable[State::LESS].emplace(
+			Character::LESS, Transition(State::LEFT_MOVE, TokenType::LEFT_MOVE, Action::FORWARD)
+		);
+		m_stateTransitionTable[State::LEFT_MOVE].emplace(
+			Character::ASSIGN, Transition(State::START, TokenType::SELF_LEFT_MOVE, Action::APPEND)
+		);
+		m_stateOtherTransitionTable.emplace(
+			State::LEFT_MOVE, Transition(State::START, TokenType::LEFT_MOVE, Action::RETRACT)
 		);
 		// !
 		m_stateTransitionTable[State::START].emplace(
@@ -228,7 +253,7 @@ namespace CppInterp {
 			State::NOT, Transition(State::START, TokenType::NOT, Action::RETRACT)
 		);
 		m_stateTransitionTable[State::NOT].emplace(
-			Character::ASSIGN, Transition(State::START, TokenType::NOT_EQUAL, Action::RETRACT)
+			Character::ASSIGN, Transition(State::START, TokenType::NOT_EQUAL, Action::APPEND)
 		);
 		// =
 		m_stateTransitionTable[State::START].emplace(
@@ -238,7 +263,7 @@ namespace CppInterp {
 			State::ASSIGN, Transition(State::START, TokenType::ASSIGN, Action::RETRACT)
 		);
 		m_stateTransitionTable[State::ASSIGN].emplace(
-			Character::ASSIGN, Transition(State::START, TokenType::EQUAL, Action::RETRACT)
+			Character::ASSIGN, Transition(State::START, TokenType::EQUAL, Action::APPEND)
 		);
 		// &
 		m_stateTransitionTable[State::START].emplace(
@@ -248,10 +273,10 @@ namespace CppInterp {
 			State::BIT_AND, Transition(State::START, TokenType::BIT_AND, Action::RETRACT)
 		);
 		m_stateTransitionTable[State::BIT_AND].emplace(
-			Character::BIT_AND, Transition(State::START, TokenType::AND, Action::RETRACT)
+			Character::BIT_AND, Transition(State::START, TokenType::AND, Action::APPEND)
 		);
 		m_stateTransitionTable[State::BIT_AND].emplace(
-			Character::ASSIGN, Transition(State::START, TokenType::SELF_BIT_AND, Action::RETRACT)
+			Character::ASSIGN, Transition(State::START, TokenType::SELF_BIT_AND, Action::APPEND)
 		);
 		// |
 		m_stateTransitionTable[State::START].emplace(
@@ -261,10 +286,10 @@ namespace CppInterp {
 			State::BIT_OR, Transition(State::START, TokenType::BIT_OR, Action::RETRACT)
 		);
 		m_stateTransitionTable[State::BIT_OR].emplace(
-			Character::BIT_OR, Transition(State::START, TokenType::OR, Action::RETRACT)
+			Character::BIT_OR, Transition(State::START, TokenType::OR, Action::APPEND)
 		);
 		m_stateTransitionTable[State::BIT_OR].emplace(
-			Character::ASSIGN, Transition(State::START, TokenType::SELF_BIT_OR, Action::RETRACT)
+			Character::ASSIGN, Transition(State::START, TokenType::SELF_BIT_OR, Action::APPEND)
 		);
 		// ^
 		m_stateTransitionTable[State::START].emplace(
@@ -274,50 +299,50 @@ namespace CppInterp {
 			State::XOR, Transition(State::START, TokenType::XOR, Action::RETRACT)
 		);
 		m_stateTransitionTable[State::XOR].emplace(
-			Character::ASSIGN, Transition(State::START, TokenType::SELF_XOR, Action::RETRACT)
+			Character::ASSIGN, Transition(State::START, TokenType::SELF_XOR, Action::APPEND)
 		);
 		//other
 		m_stateTransitionTable[State::START].emplace(
-			Character::LEFT_PAREN, Transition(State::START, TokenType::LEFT_PAREN, Action::RETRACT)
+			Character::LEFT_PAREN, Transition(State::START, TokenType::LEFT_PAREN, Action::APPEND)
 		);
 		m_stateTransitionTable[State::START].emplace(
-			Character::RIGHT_PAREN, Transition(State::START, TokenType::RIGHT_PAREN, Action::RETRACT)
+			Character::RIGHT_PAREN, Transition(State::START, TokenType::RIGHT_PAREN, Action::APPEND)
 		);
 		m_stateTransitionTable[State::START].emplace(
-			Character::LEFT_BRACE, Transition(State::START, TokenType::LEFT_BRACE, Action::RETRACT)
+			Character::LEFT_BRACE, Transition(State::START, TokenType::LEFT_BRACE, Action::APPEND)
 		);
 		m_stateTransitionTable[State::START].emplace(
-			Character::RIGHT_BRACE, Transition(State::START, TokenType::RIGHT_BRACE, Action::RETRACT)
+			Character::RIGHT_BRACE, Transition(State::START, TokenType::RIGHT_BRACE, Action::APPEND)
 		);
 		m_stateTransitionTable[State::START].emplace(
-			Character::LEFT_SQUARE, Transition(State::START, TokenType::LEFT_SQUARE, Action::RETRACT)
+			Character::LEFT_SQUARE, Transition(State::START, TokenType::LEFT_SQUARE, Action::APPEND)
 		);
 		m_stateTransitionTable[State::START].emplace(
-			Character::RIGHT_SQUARE, Transition(State::START, TokenType::RIGHT_SQUARE, Action::RETRACT)
+			Character::RIGHT_SQUARE, Transition(State::START, TokenType::RIGHT_SQUARE, Action::APPEND)
 		);
 		m_stateTransitionTable[State::START].emplace(
-			Character::SEMICOLON, Transition(State::START, TokenType::SEMICOLON, Action::RETRACT)
+			Character::SEMICOLON, Transition(State::START, TokenType::SEMICOLON, Action::APPEND)
 		);
 		m_stateTransitionTable[State::START].emplace(
-			Character::COMMA, Transition(State::START, TokenType::COMMA, Action::RETRACT)
+			Character::COMMA, Transition(State::START, TokenType::COMMA, Action::APPEND)
 		);
 		m_stateTransitionTable[State::START].emplace(
-			Character::COLON, Transition(State::START, TokenType::COLON, Action::RETRACT)
+			Character::COLON, Transition(State::COLON, TokenType::COLON, Action::FORWARD)
 		);
 		m_stateTransitionTable[State::START].emplace(
-			Character::QUESTION, Transition(State::START, TokenType::QUESTION, Action::RETRACT)
+			Character::QUESTION, Transition(State::START, TokenType::QUESTION, Action::APPEND)
 		);
 		m_stateTransitionTable[State::START].emplace(
-			Character::DOT, Transition(State::START, TokenType::DOT, Action::RETRACT)
+			Character::DOT, Transition(State::START, TokenType::DOT, Action::APPEND)
+		);
+		m_stateTransitionTable[State::START].emplace(
+			Character::BIT_NOT, Transition(State::START, TokenType::BIT_NOT, Action::APPEND)
 		);
 		m_stateTransitionTable[State::SUBTRACT].emplace(
-			Character::GREATER, Transition(State::START, TokenType::POINT_TO, Action::RETRACT)
+			Character::GREATER, Transition(State::START, TokenType::POINT_TO, Action::APPEND)
 		);
 		m_stateTransitionTable[State::COLON].emplace(
-			Character::COLON, Transition(State::START, TokenType::BELONG_TO, Action::RETRACT)
-		);
-		m_stateTransitionTable[State::START].emplace(
-			Character::BIT_NOT, Transition(State::START, TokenType::BIT_NOT, Action::RETRACT)
+			Character::COLON, Transition(State::START, TokenType::BELONG_TO, Action::APPEND)
 		);
 		//comment
 		m_stateTransitionTable[State::DIVIDE].emplace(
@@ -331,10 +356,7 @@ namespace CppInterp {
 		);
 		// \ 
 		m_stateTransitionTable[State::START].emplace(
-			Character::BACKSLASH, Transition(State::BACKSLASH, TokenType::UNKNOWN, Action::JUMP)
-		);
-		m_stateTransitionTable[State::BACKSLASH].emplace(
-			Character::LINESPLIT, Transition(State::BACKSLASH, TokenType::UNKNOWN, Action::NEWLINE)
+			Character::BACKSLASH, Transition(State::START, TokenType::UNKNOWN, Action::JUMP)
 		);
 	}
 
@@ -348,13 +370,13 @@ namespace CppInterp {
 		auto it = str.cbegin();
 		const auto& characterSet = CharacterSet::Instance();
 		const auto& escapeCharacterSet = EscapeCharacterSet::Instance();
+		Transition transition;
 		while (it != str.cend()) {
 			auto chTypeOpt = characterSet.GetCharacterType(*it);
 			if (!chTypeOpt) {
 				throw LexerException("Unknown character exception'", *it, row, col);
 			}
 			auto& curStateTransTable = m_stateTransitionTable[state];
-			Transition transition;
 			if (auto transIt = curStateTransTable.find(*chTypeOpt); transIt != curStateTransTable.end()) {
 				transition = transIt->second;
 			}
@@ -368,8 +390,13 @@ namespace CppInterp {
 				break;
 			}
 			case Action::RETRACT: {
-				buf.push_back(*it);
 				tokens.emplace_back(transition.m_tokenType, buf, row, col - buf.size());
+				buf.clear();
+				break;
+			}
+			case Action::APPEND: {
+				buf.push_back(*it);
+				tokens.emplace_back(transition.m_tokenType, buf, row, col - buf.size() + 1);
 				buf.clear();
 				break;
 			}
@@ -381,7 +408,7 @@ namespace CppInterp {
 				break;
 			}
 			case Action::NEWLINE: {
-				col = -1;
+				col = 0;
 				row += 1;
 				break;
 			}
@@ -396,10 +423,13 @@ namespace CppInterp {
 			}
 			}
 			state = transition.m_next;
-			it++;
-			col++;
-
-			return tokens;
+			if (transition.m_action != Action::RETRACT) {
+				it++;
+				col++;
+			}
 		}
-
+		if (!buf.empty())
+			tokens.emplace_back(transition.m_tokenType, buf, row, col - buf.size() - 1);
+		return tokens;
 	}
+}

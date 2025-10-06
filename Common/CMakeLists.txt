@@ -4,7 +4,6 @@ add_library(Common STATIC
     src/Semaphore.cpp
     src/Timestamp.cpp
     src/Spinlock.cpp
-    src/Timer.cpp
     )
 
 find_package(fmt CONFIG REQUIRED)
