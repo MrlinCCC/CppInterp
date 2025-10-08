@@ -247,13 +247,14 @@ namespace CppInterp {
 		}
 	};
 
-	class Lexer {
+	class Lexer :public Singleton<Lexer> {
+		friend class ::Singleton<Lexer>;
 	public:
-		Lexer();
-
 		std::vector<Token> Tokenize(const std::string& str);
 
 	private:
+		Lexer();
+
 		std::unordered_map<Character::Type, Transition> m_stateTransitionTable[StateSize];
 		std::unordered_map<State::Type, Transition> m_stateOtherTransitionTable;
 	};
