@@ -1,6 +1,7 @@
 #pragma once
 #include"Lexer.h"
-
+#include <iostream>
+#include <algorithm>
 
 namespace CppInterp {
 	namespace TokenType {
@@ -18,16 +19,15 @@ namespace CppInterp {
 		constexpr Type RETURN = 50;        // return
 		constexpr Type BREAK = 51;         // break
 		constexpr Type CONTINUE = 52;      // continue
-		constexpr Type TRUE = 53;          // true
-		constexpr Type FALSE = 54;         // false
-		constexpr Type NULL_LITERAL = 55;  // null
-		constexpr Type INT = 56;   // int
-		constexpr Type DOUBLE = 57;   // double
-		constexpr Type CHAR = 58;   // char
-		constexpr Type STRING = 59;   // string
-		constexpr Type BOOL = 60;   // bool
-		constexpr Type VOID = 61;   // void
-		constexpr Type IMPORT = 62;   // import
+		constexpr Type BOOL_LITERAL = 53;          // false, true
+		constexpr Type NULL_LITERAL = 54;  // null
+		constexpr Type INT = 55;   // int
+		constexpr Type DOUBLE = 56;   // double
+		constexpr Type CHAR = 57;   // char
+		constexpr Type STRING = 58;   // string
+		constexpr Type BOOL = 59;   // bool
+		constexpr Type VOID = 60;   // void
+		constexpr Type IMPORT = 61;   // import
 		constexpr Type LAMBDA = 62;   // lambda
 	}
 
@@ -43,7 +43,7 @@ namespace CppInterp {
 
 		// --- Statements ---
 		constexpr Type COMPOUND_STMT = 10;
-		constexpr Type EXPR_STMT = 11;
+		constexpr Type EMPTY_STMT = 11;
 		constexpr Type VAR_DECL = 12;
 		constexpr Type DECLARATOR_LIST = 13;
 		constexpr Type DECLARATOR = 14;
@@ -99,7 +99,7 @@ namespace CppInterp {
 		case NodeType::PARAMETER: return "PARAMETER";
 
 		case NodeType::COMPOUND_STMT: return "COMPOUND_STMT";
-		case NodeType::EXPR_STMT: return "EXPR_STMT";
+		case NodeType::EMPTY_STMT: return "EMPTY_STMT";
 		case NodeType::VAR_DECL: return "VAR_DECL";
 		case NodeType::DECLARATOR_LIST: return "DECLARATOR_LIST";
 		case NodeType::DECLARATOR: return "DECLARATOR";
@@ -195,6 +195,15 @@ namespace CppInterp {
 			return false;
 		}
 
+		inline bool CheckAny(const std::initializer_list<TokenType::Type>& types) {
+			return m_current < m_tokens.size() &&
+				std::ranges::any_of(types, [&](auto t) { return Peek().m_type == t; });
+		}
+
+		inline bool MatchAny(const std::initializer_list<TokenType::Type>& types) {
+			return std::ranges::any_of(types, [&](auto t) { return Match(t); });
+		}
+
 		AstNode* ParseProgram(AstNode* parent);
 		AstNode* ParseImportStmt(AstNode* parent);
 		AstNode* ParseFunctionDef(AstNode* parent);
@@ -222,7 +231,6 @@ namespace CppInterp {
 		AstNode* ParseExpression(AstNode* parent);
 		AstNode* ParseAssignment(AstNode* parent);
 		AstNode* ParseConditional(AstNode* parent);
-		AstNode* ParseBinary(AstNode* parent, std::function<AstNode* (AstNode*)> lower, const std::vector<TokenType::Type>& ops);
 		AstNode* ParseLogicalOr(AstNode* parent);
 		AstNode* ParseLogicalAnd(AstNode* parent);
 		AstNode* ParseBitOr(AstNode* parent);
@@ -248,6 +256,41 @@ namespace CppInterp {
 		AstNode* ParseFunctionType(AstNode* parent);
 		AstNode* ParseParameterTypeList(AstNode* parent);
 
+		AstNode* ParseBinary(AstNode* parent, std::function<AstNode* (AstNode*)> lower, const std::vector<TokenType::Type>& ops);
+
+		// X {, X}
+		template <typename ParseFunc>
+		inline AstNode* ParseCommaSeparatedListTemplate(
+			NodeType::Type type,
+			AstNode* parent,
+			ParseFunc parseElementFunc
+		) {
+			//element, if only one node direct return
+			AstNode* first = (this->*parseElementFunc)(parent);
+			if (!Check(TokenType::COMMA))
+				return first;
+			//list parent
+			AstNode* node = new AstNode(type, parent);
+			m_nodes.push_back(node);
+			node->m_children.push_back(first);
+			//, element
+			while (Match(TokenType::COMMA)) {
+				node->m_children.push_back((this->*parseElementFunc)(node));
+			}
+			return node;
+		}
+		//template <typename ParseFunc>
+		//inline AstNode* ParseCommaSeparatedListTemplate(NodeType::Type type, AstNode* parent, ParseFunc parseElementFunc)
+		//{
+		//	AstNode* node = new AstNode(type, parent); m_nodes.push_back(node);
+		//	//element 
+		//	node->m_children.push_back((this->*parseElementFunc)(node)); // , element 
+		//	while (Match(TokenType::COMMA))
+		//	{
+		//		node->m_children.push_back((this->*parseElementFunc)(node));
+		//	}
+		//	return node;
+		//}
 
 		int m_current = 0;
 		std::vector<Token> m_tokens;

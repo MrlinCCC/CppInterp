@@ -1,8 +1,6 @@
-#pragma once
+
 #include"Parser.h"
 #include "Exception.hpp"
-#include <iostream>
-#include <algorithm>
 
 using namespace CppInterp;
 
@@ -22,8 +20,8 @@ void Parser::PreprocessTokens(std::vector<Token>& tokens) {
 		{"return", TokenType::RETURN},
 		{"break", TokenType::BREAK},
 		{"continue", TokenType::CONTINUE},
-		{"true", TokenType::TRUE},
-		{"false", TokenType::FALSE},
+		{"true", TokenType::BOOL_LITERAL},
+		{"false", TokenType::BOOL_LITERAL},
 		{"NULL", TokenType::NULL_LITERAL},
 		{"int", TokenType::INT},
 		{"double", TokenType::DOUBLE},
@@ -86,7 +84,7 @@ AstNode* Parser::ParseImportStmt(AstNode* parent) {
 	//string literal or identifier
 	{
 		const Token& token = Peek();
-		if (!(Match(TokenType::STRING_LITERAL) || Match(TokenType::IDENTIFIER))) {
+		if (!MatchAny({ TokenType::STRING_LITERAL ,TokenType::IDENTIFIER })) {
 			throw ParserException(
 				"Invalid import: '" + token.m_content + "', expected string literal or identifier after 'import'",
 				token.m_line,
@@ -159,15 +157,8 @@ AstNode* Parser::ParseFunctionDef(AstNode* parent) {
 }
 
 AstNode* Parser::ParseParameterList(AstNode* parent) {
-	AstNode* node = new AstNode(NodeType::PARAMETER_LIST, parent);
-	m_nodes.push_back(node);
-	//parameter
-	node->m_children.push_back(ParseParameter(node));
-	//, parameter
-	while (Match(TokenType::COMMA)) {
-		node->m_children.push_back(ParseParameter(node));
-	}
-	return node;
+	// parameter {, parameter}
+	return ParseCommaSeparatedListTemplate(NodeType::PARAMETER_LIST, parent, &Parser::ParseParameter);
 }
 
 AstNode* Parser::ParseParameter(AstNode* parent) {
@@ -175,21 +166,8 @@ AstNode* Parser::ParseParameter(AstNode* parent) {
 	m_nodes.push_back(node);
 	//type
 	node->m_children.push_back(ParseType(node));
-	//identifier
-	{
-		const Token& token = Peek();
-		if (!Match(TokenType::IDENTIFIER)) {
-			throw ParserException(
-				"Invalid parameter: expected identifier after type",
-				token.m_line,
-				token.m_column
-			);
-		}
-		AstNode* target = new AstNode(NodeType::IDENTIFIER, token, node);
-		node->m_children.push_back(target);
-		m_nodes.push_back(target);
-	}
-	node->m_children.push_back(node);
+	//declarator
+	node->m_children.push_back(ParseDeclarator(node));
 	return node;
 }
 
@@ -268,12 +246,12 @@ AstNode* Parser::ParseCompoundStmt(AstNode* parent) {
 	return node;
 }
 
+//ExpressionStmt is a logical node
 AstNode* Parser::ParseExpressionStmt(AstNode* parent) {
-	AstNode* node = new AstNode(NodeType::EXPR_STMT, parent);
-	m_nodes.push_back(node);
+	AstNode* exprNode = nullptr;
 	//expression
 	if (!Check(TokenType::SEMICOLON)) {
-		node->m_children.push_back(ParseExpression(node));
+		exprNode = ParseExpression(parent);
 	}
 	//;
 	if (!Match(TokenType::SEMICOLON)) {
@@ -284,7 +262,12 @@ AstNode* Parser::ParseExpressionStmt(AstNode* parent) {
 			token.m_column + token.m_content.size()
 		);
 	}
-	return node;
+	//empty statement
+	if (exprNode == nullptr) {
+		exprNode = new AstNode(NodeType::EMPTY_STMT, parent);
+		m_nodes.push_back(exprNode);
+	}
+	return exprNode;
 }
 
 AstNode* Parser::ParseVariableDeclaration(AstNode* parent, bool consumeSemicolo) {
@@ -292,7 +275,7 @@ AstNode* Parser::ParseVariableDeclaration(AstNode* parent, bool consumeSemicolo)
 	m_nodes.push_back(node);
 	//let or const
 	const Token& token = Peek();
-	if (!(Check(TokenType::LET) || Check(TokenType::CONST))) {
+	if (!MatchAny({ TokenType::LET ,TokenType::CONST })) {
 		throw ParserException(
 			"Invalid variable declaration: '" + token.m_content + "', expected 'let' or 'const' at the beginning of variable declaration",
 			token.m_line,
@@ -300,7 +283,6 @@ AstNode* Parser::ParseVariableDeclaration(AstNode* parent, bool consumeSemicolo)
 		);
 	}
 	node->m_token = token;
-	Consume();
 	//type
 	node->m_children.push_back(ParseType(node));
 	//declarator_list
@@ -318,15 +300,7 @@ AstNode* Parser::ParseVariableDeclaration(AstNode* parent, bool consumeSemicolo)
 }
 
 AstNode* Parser::ParseDeclaratorList(AstNode* parent) {
-	AstNode* node = new AstNode(NodeType::DECLARATOR_LIST, parent);
-	m_nodes.push_back(node);
-	//declarator
-	node->m_children.push_back(ParseDeclarator(node));
-	//, declarator
-	while (Match(TokenType::COMMA)) {
-		node->m_children.push_back(ParseDeclarator(node));
-	}
-	return node;
+	return ParseCommaSeparatedListTemplate(NodeType::DECLARATOR_LIST, parent, &Parser::ParseDeclarator);
 }
 
 AstNode* Parser::ParseDeclarator(AstNode* parent) {
@@ -539,13 +513,9 @@ AstNode* Parser::ParseCaseClause(AstNode* parent) {
 	}
 	//statement
 	{
-		const Token* pToken = &Peek();
-		while (pToken->m_type != TokenType::CASE
-			&& pToken->m_type != TokenType::DEFAULT
-			&& pToken->m_type != TokenType::RIGHT_BRACE)
+		while (CheckAny({ TokenType::CASE, TokenType::DEFAULT, TokenType::RIGHT_BRACE }))
 		{
 			node->m_children.push_back(ParseStatement(node));
-			pToken = &Peek();
 		}
 	}
 	return node;
@@ -629,7 +599,7 @@ AstNode* Parser::ParseForStmt(AstNode* parent) {
 		if (Check(TokenType::LET) || Check(TokenType::CONST))
 			node->m_children.push_back(ParseVariableDeclaration(node, false));
 		else
-			node->m_children.push_back(ParseExpressionStmt(node));
+			node->m_children.push_back(ParseExpression(node));
 	}
 	//;
 	if (!Match(TokenType::SEMICOLON)) {
@@ -730,34 +700,29 @@ AstNode* Parser::ParseContinueStmt(AstNode* parent) {
 }
 
 AstNode* Parser::ParseExpression(AstNode* parent) {
-	AstNode* node = new AstNode(NodeType::EXPRESSION, parent);
-	m_nodes.push_back(node);
-	//assignment
-	node->m_children.push_back(ParseAssignment(node));
-	//, assignment
-	while (Match(TokenType::COMMA)) {
-		node->m_children.push_back(ParseAssignment(node));
-	}
-	return node;
+	//assignment {, assignment}
+	return ParseCommaSeparatedListTemplate(NodeType::EXPRESSION, parent, &Parser::ParseAssignment);
 }
 
 AstNode* Parser::ParseAssignment(AstNode* parent) {
-	AstNode* node = new AstNode(NodeType::ASSIGN_EXPR, parent);
-	m_nodes.push_back(node);
-	//conditional
-	node->m_children.push_back(ParseConditional(node));
+	AstNode* left = ParseConditional(parent);
+	m_nodes.push_back(left);
 	//assignment_operator assignment
-	if (Check(TokenType::ASSIGN) || Check(TokenType::SELF_ADD)
-		|| Check(TokenType::SELF_SUB) || Check(TokenType::SELF_MUL)
-		|| Check(TokenType::SELF_DIV) || Check(TokenType::SELF_MODULO))
+	if (CheckAny({ TokenType::ASSIGN,TokenType::SELF_ADD,TokenType::SELF_SUB,
+			TokenType::SELF_MUL ,TokenType::SELF_DIV,TokenType::SELF_MODULO }))
 	{
+		AstNode* node = new AstNode(NodeType::ASSIGN_EXPR, parent);
+		m_nodes.push_back(node);
 		//=, +=, -=, *=, /=, %=
 		node->m_token = Peek();
 		Consume();
+		node->m_children.push_back(left);
+		left->m_parent = node;
 		//assignment
 		node->m_children.push_back(ParseAssignment(node));
+		return node;
 	}
-	return node;
+	return left;
 }
 
 AstNode* Parser::ParseConditional(AstNode* parent) {
@@ -769,6 +734,7 @@ AstNode* Parser::ParseConditional(AstNode* parent) {
 		m_nodes.push_back(node);
 		//condition
 		node->m_children.push_back(condition);
+		condition->m_parent = node;
 		//true
 		node->m_children.push_back(ParseExpression(node));
 		//:
@@ -787,7 +753,7 @@ AstNode* Parser::ParseConditional(AstNode* parent) {
 	return condition;
 }
 
-//lower {ops lower}
+//binary expr : lower {ops lower}  left associative
 AstNode* Parser::ParseBinary(AstNode* parent, std::function<AstNode* (AstNode*)> lower, const std::vector<TokenType::Type>& ops) {
 	AstNode* left = lower(parent);
 	while (std::any_of(ops.begin(), ops.end(), [&](TokenType::Type t) { return Check(t); })) {
@@ -802,7 +768,6 @@ AstNode* Parser::ParseBinary(AstNode* parent, std::function<AstNode* (AstNode*)>
 	}
 	return left;
 }
-
 
 AstNode* Parser::ParseLogicalOr(AstNode* parent) {
 	//logical_and {|| logical_and}
@@ -860,13 +825,12 @@ AstNode* Parser::ParseMultiplicative(AstNode* parent) {
 
 AstNode* Parser::ParseUnary(AstNode* parent) {
 	std::vector<Token> ops;
-	while (Check(TokenType::ADD) || Check(TokenType::SUBTRACT)
-		|| Check(TokenType::NOT) || Check(TokenType::BIT_NOT)
-		|| Check(TokenType::SELF_ADD) || Check(TokenType::SELF_SUB)) {
+	while (CheckAny({ TokenType::ADD ,TokenType::SUBTRACT,TokenType::NOT,
+		TokenType::BIT_NOT,TokenType::SELF_ADD,TokenType::SELF_SUB }))
+	{
 		ops.push_back(Peek());
 		Consume();
 	}
-
 	//right associative
 	AstNode* node = ParsePostfix(parent);
 	for (auto it = ops.rbegin(); it != ops.rend(); ++it) {
@@ -884,16 +848,14 @@ AstNode* Parser::ParseUnary(AstNode* parent) {
 AstNode* Parser::ParsePostfix(AstNode* parent) {
 	//primary
 	AstNode* current = ParsePrimary(parent);
-	//m_nodes.push_back(current);
 
 	// (++ | -- | . identifier | [ expression ] | ( [ argument_list ] ))
-	while (Check(TokenType::SELF_ADD) || Check(TokenType::SELF_SUB)
-		|| Check(TokenType::DOT) || Check(TokenType::LEFT_SQUARE)
-		|| Check(TokenType::LEFT_PAREN))
+	while (CheckAny({ TokenType::SELF_ADD,TokenType::SELF_SUB ,
+		TokenType::DOT,TokenType::LEFT_SQUARE,TokenType::LEFT_PAREN }))
 	{
 		const Token& token = Peek();
 
-		if (Match(TokenType::SELF_ADD) || Match(TokenType::SELF_SUB)) {
+		if (MatchAny({ TokenType::SELF_ADD ,TokenType::SELF_SUB })) {
 			//++ --
 			AstNode* postfix = new AstNode(NodeType::UNARY_EXPR);
 			m_nodes.push_back(postfix);
@@ -950,7 +912,6 @@ AstNode* Parser::ParsePostfix(AstNode* parent) {
 			// ( [ argument_list ] )
 			AstNode* call = new AstNode(NodeType::CALL_EXPR, parent);
 			m_nodes.push_back(call);
-			call->m_token = token;
 			call->m_children.push_back(current);
 			current->m_parent = call;
 			// argument_list
@@ -973,7 +934,6 @@ AstNode* Parser::ParsePostfix(AstNode* parent) {
 	return current;
 }
 
-//primary is a logical node
 AstNode* Parser::ParsePrimary(AstNode* parent) {
 	const Token& token = Peek();
 	AstNode* node = nullptr;
@@ -990,8 +950,7 @@ AstNode* Parser::ParsePrimary(AstNode* parent) {
 	case TokenType::DOUBLE_LITERAL:
 	case TokenType::CHARACTER_LITERAL:
 	case TokenType::STRING_LITERAL:
-	case TokenType::TRUE:
-	case TokenType::FALSE:
+	case TokenType::BOOL_LITERAL:
 	case TokenType::NULL_LITERAL: {
 		// literal
 		node = ParseLiteral(parent);
@@ -1018,7 +977,7 @@ AstNode* Parser::ParsePrimary(AstNode* parent) {
 		}
 		break;
 	}
-	case TokenType::LAMBDA: { // function literal, ¼ÙÉè lambda ¹Ø¼ü×ÖÊÇ TokenType::LAMBDA
+	case TokenType::LAMBDA: { // function literal
 		node = ParseFunctionLiteral(parent);
 		break;
 	}
@@ -1035,17 +994,9 @@ AstNode* Parser::ParsePrimary(AstNode* parent) {
 	return node;
 }
 
-
 AstNode* Parser::ParseArgumentList(AstNode* parent) {
-	AstNode* node = new AstNode(NodeType::ARGUMENT_LIST, parent);
-	m_nodes.push_back(node);
-	//expression
-	node->m_children.push_back(ParseExpression(node));
-	//, expression
-	while (Match(TokenType::COMMA)) {
-		node->m_children.push_back(ParseExpression(node));
-	}
-	return node;
+	//expression {, expression}
+	return ParseCommaSeparatedListTemplate(NodeType::ARGUMENT_LIST, parent, &Parser::ParseExpression);
 }
 
 AstNode* Parser::ParseInitializer(AstNode* parent) {
@@ -1076,8 +1027,8 @@ AstNode* Parser::ParseInitializer(AstNode* parent) {
 				token.m_column
 			);
 		}
-		//expression
-		node->m_children.push_back(ParseExpression(node));
+		//initializer
+		node->m_children.push_back(ParseInitializer(node));
 	}
 	// { initializer_list } (array or struct initializer)
 	else if (Match(TokenType::LEFT_BRACE)) {
@@ -1095,23 +1046,16 @@ AstNode* Parser::ParseInitializer(AstNode* parent) {
 			);
 		}
 	}
-	//expression
+	//assignment
 	else {
-		node->m_children.push_back(ParseExpression(node));
+		node->m_children.push_back(ParseAssignment(node));
 	}
 	return node;
 }
 
 AstNode* Parser::ParseInitializerList(AstNode* parent) {
-	AstNode* node = new AstNode(NodeType::INITIALIZER_LIST, parent);
-	m_nodes.push_back(node);
-	//initializer
-	node->m_children.push_back(ParseInitializer(node));
-	//, initializer
-	while (Match(TokenType::COMMA)) {
-		node->m_children.push_back(ParseInitializer(node));
-	}
-	return node;
+	//initializer {, initializer}
+	return ParseCommaSeparatedListTemplate(NodeType::INITIALIZER_LIST, parent, &Parser::ParseInitializer);
 }
 
 AstNode* Parser::ParseFunctionLiteral(AstNode* parent) {
@@ -1167,43 +1111,53 @@ AstNode* Parser::ParseFunctionLiteral(AstNode* parent) {
 AstNode* Parser::ParseLiteral(AstNode* parent) {
 	AstNode* node = new AstNode(NodeType::LITERAL, parent);
 	m_nodes.push_back(node);
-	node->m_token = Peek();
+	const Token& token = Peek();
 	//INT_LITERAL | DOUBLE_LITERAL | CHARACTER_LITERAL | STRING_LITERAL | BOOL_LITERAL| NULL_LITERAL
-	Consume();
+	if (!MatchAny({ TokenType::INT_LITERAL,TokenType::DOUBLE_LITERAL, TokenType::CHARACTER_LITERAL,
+		TokenType::STRING_LITERAL,TokenType::BOOL_LITERAL,TokenType::NULL_LITERAL })) {
+		throw ParserException(
+			"Invalid literal: '" + token.m_content + "', expected literal but got identifier",
+			token.m_line,
+			token.m_column
+		);
+	}
+	node->m_token = token;
 	return node;
 }
 
-//type is a logical node
 AstNode* Parser::ParseType(AstNode* parent) {
 	AstNode* node = nullptr;
-	if (Check(TokenType::IDENTIFIER)) {
-		//user-defined type
-		const Token& token = Peek();
+	const Token& token = Peek();
+	switch (token.m_type) {
+	case TokenType::IDENTIFIER:
+		// user-defined type
 		node = new AstNode(NodeType::IDENTIFIER, token, parent);
 		m_nodes.push_back(node);
 		Consume();
-	}
-	else if (Check(TokenType::INT) || Check(TokenType::DOUBLE)
-		|| Check(TokenType::CHAR) || Check(TokenType::STRING)
-		|| Check(TokenType::BOOL) || Check(TokenType::VOID))
-	{
-		//builtin type
+		break;
+	case TokenType::INT:
+	case TokenType::DOUBLE:
+	case TokenType::CHAR:
+	case TokenType::STRING:
+	case TokenType::BOOL:
+	case TokenType::VOID:
+		// builtin type
 		node = ParseBuiltinType(parent);
-	}
-	else if (Check(TokenType::LEFT_PAREN)) {
-		//function type
+		break;
+	case TokenType::LEFT_PAREN:
+		// function type
 		node = ParseFunctionType(parent);
-	}
-	else {
-		const Token& token = Peek();
+		break;
+	default:
 		throw ParserException(
-			"Invalid type: '" + token.m_content + "', expected type name, builtin type, or 'lambda'",
+			"Invalid type: '" + token.m_content + "', expected type name, builtin type, or '(' for function type",
 			token.m_line,
 			token.m_column
 		);
 	}
 	return node;
 }
+
 
 AstNode* Parser::ParseBuiltinType(AstNode* parent) {
 	AstNode* node = new AstNode(NodeType::BUILTIN_TYPE, parent);
@@ -1245,15 +1199,8 @@ AstNode* Parser::ParseFunctionType(AstNode* parent) {
 }
 
 AstNode* Parser::ParseParameterTypeList(AstNode* parent) {
-	AstNode* node = new AstNode(NodeType::PARAMETER_TYPE_LIST, parent);
-	m_nodes.push_back(node);
-	//type
-	node->m_children.push_back(ParseType(node));
-	//, type
-	while (Match(TokenType::COMMA)) {
-		node->m_children.push_back(ParseType(node));
-	}
-	return node;
+	//type,{, type}
+	return ParseCommaSeparatedListTemplate(NodeType::PARAMETER_TYPE_LIST, parent, &Parser::ParseType);
 }
 
 void Parser::PrintAstTree(AstNode* node, int depth) {

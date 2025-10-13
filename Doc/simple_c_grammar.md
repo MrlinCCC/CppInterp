@@ -34,7 +34,7 @@ case_clause ::= "case" literal ":" { statement } ;
 default_clause ::= "default" ":" { statement } ;
 ---------------- Loop ----------------
 while_stmt ::= "while" "(" expression ")" statement ;
-for_stmt ::= "for" "("  ( variable_declaration | [ expression ] ) ";"  [ expression ] ";" [ expression ] ")" statement ;
+for_stmt ::= "for" "("  [ variable_declaration without ";" |  expression ] ";"  [ expression ] ";" [ expression ] ")" statement ;
 return_stmt ::= "return" [ expression ] ";" ;
 break_stmt ::= "break" ";" ;
 continue_stmt ::= "continue" ";" ;
@@ -61,8 +61,8 @@ primary ::= identifier
           | "(" expression ")"
           | function_literal;
 argument_list ::= expression { "," expression } ;
-initializer ::= expression
-                     | "." identifier "=" expression
+initializer ::= assignment
+                     | "." identifier "=" initializer
                      | "{" [ initializer_list ] "}" ;
 initializer_list ::= initializer { "," initializer } ;
 function_literal ::= "lambda" "(" [ parameter_list ] ")" "->" type compound_stmt ;
@@ -101,11 +101,22 @@ parameter_type_list ::= type { "," type } ;
 - Literals: "literal"
 - Type: "type", "builtin_type", "function_type", "parameter_type_list"
 
+# AST Node Classification
+
+- Sequence Chosen Nodes( { ... } or { X | Y | Z } ): program
+- Single Chosen Nodes( (X | Y | Z)... ): literal, type, builtin_type, assignment_operator, primary, initializer
+- List Nodes( X { "," X } ): parameter_list, declarator_list, parameter_type_list, argument_list, initializer_list, expression
+- Sequence Nodes( A B C ... ): function_definition, compound_stmt, declarator, struct_definition, if_stmt, switch_stmt, case_clause, default_clause, for_stmt, return_stmt, assignment, binary_expr, unary, function_type, function_literal
+- Fix Nodes( A B C ): import_stmt, parameter, variable_declaration, struct_member_declaration, while_stmt, break_stmt, continue_stmt
+- Logic Nodes: statement, expression_stmt
+- Expression Nodes ( if only left return left else return new node after built relation )
+  - Sequence Relation: conditional
+  - Left Associative: binary(logical_or, logical_and, bit_or, bit_xor, bit_and, equality, relational, shift, additive, multiplicative), postfix
+  - Right Associative: unary
+
 # Notes
 
 - 该语法非严格 LL1，但可以通过递归下降法解析
-
-- statement 是逻辑节点,在语法树上进行了简化，不能存 statement 节点而是直接解析为具体的语句
 
 - if dangling else 文法歧义上通过以下拆分解决, 但递归下降隐式会优先解析最深的 if, 可以很自然解决
 

@@ -9,7 +9,7 @@ TEST(ParserTokenTest, PrintAstTree) {
 	std::string str = R"(
         import "math";
 
-        function int main() {
+        function int main(double i=1, string s="123") {
             let int x = 5;
             const int y = 10;
             let int z = x + y * 2;
