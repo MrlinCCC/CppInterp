@@ -1,6 +1,7 @@
 #include <iostream>
 #include "gtest/gtest.h"
-#include "TestLexer.hpp"
+//#include "TestLexer.hpp"
+#include"TestParser.hpp"
 
 int main(int argc, char** argv)
 {

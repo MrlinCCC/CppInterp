@@ -3,7 +3,7 @@
 
 using namespace CppInterp;
 
-static Lexer g_lexer;
+static Lexer& g_lexer = Lexer::Instance();
 
 struct TokenCase {
 	std::string input;
@@ -501,11 +501,10 @@ INSTANTIATE_TEST_SUITE_P(TokenPositions, LexerPositionTest, ::testing::ValuesIn(
 
 
 TEST(LexerExceptionTest, InvalidCharacter) {
-	Lexer lexer;
 	std::string input = "int main() { return 1@; }";
 
 	try {
-		lexer.Tokenize(input);
+		g_lexer.Tokenize(input);
 		FAIL() << "Expected LexerException due to invalid character '@'";
 	}
 	catch (const LexerException& ex) {
@@ -520,11 +519,10 @@ TEST(LexerExceptionTest, InvalidCharacter) {
 }
 
 TEST(LexerExceptionTest, InvalidEscape) {
-	Lexer lexer;
 	std::string input = "char c = '\\q';";
 
 	try {
-		lexer.Tokenize(input);
+		g_lexer.Tokenize(input);
 		FAIL() << "Expected LexerException due to invalid escape sequence";
 	}
 	catch (const LexerException& ex) {

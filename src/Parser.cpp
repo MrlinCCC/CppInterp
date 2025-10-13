@@ -1,4 +1,8 @@
+#pragma once
 #include"Parser.h"
+#include "Exception.hpp"
+#include <iostream>
+#include <algorithm>
 
 using namespace CppInterp;
 
@@ -7,6 +11,10 @@ void Parser::PreprocessTokens(std::vector<Token>& tokens) {
 		{"function", TokenType::FUNCTION},
 		{"let", TokenType::LET},
 		{"const", TokenType::CONST},
+		{"struct", TokenType::STRUCT},
+		{"switch", TokenType::SWITCH},
+		{"case", TokenType::CASE},
+		{"default", TokenType::DEFAULT},
 		{"if", TokenType::IF},
 		{"else", TokenType::ELSE},
 		{"while", TokenType::WHILE},
@@ -16,10 +24,14 @@ void Parser::PreprocessTokens(std::vector<Token>& tokens) {
 		{"continue", TokenType::CONTINUE},
 		{"true", TokenType::TRUE},
 		{"false", TokenType::FALSE},
-		{"TRUE", TokenType::TRUE},
-		{"FALSE", TokenType::FALSE},
-		{"null", TokenType::NULL_LITERAL},
 		{"NULL", TokenType::NULL_LITERAL},
+		{"int", TokenType::INT},
+		{"double", TokenType::DOUBLE},
+		{"char", TokenType::CHAR},
+		{"string", TokenType::STRING},
+		{"bool", TokenType::BOOL},
+		{"void", TokenType::VOID},
+		{"import", TokenType::IMPORT}
 	};
 	for (auto& token : tokens) {
 		if (token.m_type == TokenType::IDENTIFIER) {
@@ -31,9 +43,1228 @@ void Parser::PreprocessTokens(std::vector<Token>& tokens) {
 	}
 }
 
+
 AstNode* Parser::Parse(const std::string& str) {
 	m_tokens = Lexer::Instance().Tokenize(str);
 	PreprocessTokens(m_tokens);
-	m_root = new AstNode(NodeType::PROGRAM);
+	m_current = 0;
+	m_root = ParseProgram(nullptr);
+	return m_root;
+}
 
+AstNode* Parser::ParseProgram(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::PROGRAM, parent);
+	m_nodes.push_back(node);
+	int tokensSize = m_tokens.size();
+	while (m_current < tokensSize) {
+		const Token& token = Peek();
+		AstNode* target = nullptr;
+		switch (token.m_type)
+		{
+		case TokenType::IMPORT:
+			target = ParseImportStmt(node);
+			break;
+		case TokenType::FUNCTION:
+			target = ParseFunctionDef(node);
+			break;
+		default:
+			target = ParseStatement(node);
+			break;
+		}
+		node->m_children.push_back(target);
+	}
+	return node;
+}
+
+
+AstNode* Parser::ParseImportStmt(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::IMPORT_STMT, parent);
+	m_nodes.push_back(node);
+	//import
+	node->m_token = Peek();
+	Consume();
+	//string literal or identifier
+	{
+		const Token& token = Peek();
+		if (!(Match(TokenType::STRING_LITERAL) || Match(TokenType::IDENTIFIER))) {
+			throw ParserException(
+				"Invalid import: '" + token.m_content + "', expected string literal or identifier after 'import'",
+				token.m_line,
+				token.m_column
+			);
+		}
+		NodeType::Type childType = token.m_type == TokenType::STRING_LITERAL ? NodeType::LITERAL : NodeType::IDENTIFIER;
+		AstNode* target = new AstNode(childType, token, node);
+		node->m_children.push_back(target);
+		m_nodes.push_back(target);
+	}
+	//;
+	if (!Match(TokenType::SEMICOLON)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Missing semicolon ';' after import statement",
+			token.m_line,
+			token.m_column + token.m_content.size()
+		);
+	}
+	return node;
+}
+
+AstNode* Parser::ParseFunctionDef(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::FUNCTION_DEF, parent);
+	m_nodes.push_back(node);
+	//function
+	node->m_token = Peek();
+	Consume();
+	//type
+	node->m_children.push_back(ParseType(node));
+	//identifier
+	{
+		const Token& token = Peek();
+		if (!Match(TokenType::IDENTIFIER)) {
+			throw ParserException(
+				"Invalid function definition: '" + token.m_content + "', expected identifier after return type",
+				token.m_line,
+				token.m_column
+			);
+		}
+		AstNode* target = new AstNode(NodeType::IDENTIFIER, token, node);
+		node->m_children.push_back(target);
+		m_nodes.push_back(target);
+	}
+	//(
+	if (!Match(TokenType::LEFT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid function definition: '" + token.m_content + "', expected '(' after function name",
+			token.m_line,
+			token.m_column + token.m_content.size()
+		);
+	}
+	//parameter_list
+	if (!Check(TokenType::RIGHT_PAREN))
+		node->m_children.push_back(ParseParameterList(node));
+	//)
+	if (!Match(TokenType::RIGHT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid function definition: '" + token.m_content + "', expected ')' after parameter list",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//compound_stmt
+	node->m_children.push_back(ParseCompoundStmt(node));
+	return node;
+}
+
+AstNode* Parser::ParseParameterList(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::PARAMETER_LIST, parent);
+	m_nodes.push_back(node);
+	//parameter
+	node->m_children.push_back(ParseParameter(node));
+	//, parameter
+	while (Match(TokenType::COMMA)) {
+		node->m_children.push_back(ParseParameter(node));
+	}
+	return node;
+}
+
+AstNode* Parser::ParseParameter(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::PARAMETER, parent);
+	m_nodes.push_back(node);
+	//type
+	node->m_children.push_back(ParseType(node));
+	//identifier
+	{
+		const Token& token = Peek();
+		if (!Match(TokenType::IDENTIFIER)) {
+			throw ParserException(
+				"Invalid parameter: expected identifier after type",
+				token.m_line,
+				token.m_column
+			);
+		}
+		AstNode* target = new AstNode(NodeType::IDENTIFIER, token, node);
+		node->m_children.push_back(target);
+		m_nodes.push_back(target);
+	}
+	node->m_children.push_back(node);
+	return node;
+}
+
+//statement is a logical node
+AstNode* Parser::ParseStatement(AstNode* parent) {
+	const Token& token = Peek();
+	AstNode* node = nullptr;
+
+	switch (token.m_type)
+	{
+	case TokenType::LEFT_BRACE:
+		node = ParseCompoundStmt(parent);
+		break;
+	case TokenType::STRUCT:
+		node = ParseStructDefinition(parent);
+		break;
+	case TokenType::IF:
+		node = ParseIfStmt(parent);
+		break;
+	case TokenType::SWITCH:
+		node = ParseSwitchStmt(parent);
+		break;
+	case TokenType::WHILE:
+		node = ParseWhileStmt(parent);
+		break;
+	case TokenType::FOR:
+		node = ParseForStmt(parent);
+		break;
+	case TokenType::RETURN:
+		node = ParseReturnStmt(parent);
+		break;
+	case TokenType::BREAK:
+		node = ParseBreakStmt(parent);
+		break;
+	case TokenType::CONTINUE:
+		node = ParseContinueStmt(parent);
+		break;
+	case TokenType::LET:
+	case TokenType::CONST:
+		node = ParseVariableDeclaration(parent);
+		break;
+	default:
+		node = ParseExpressionStmt(parent);
+		break;
+	}
+
+	return node;
+}
+
+AstNode* Parser::ParseCompoundStmt(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::COMPOUND_STMT, parent);
+	m_nodes.push_back(node);
+	//{
+	if (!Match(TokenType::LEFT_BRACE)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid compound statement: '" + token.m_content + "', expected '{' at the beginning of compound statement",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//statement
+	while (!Check(TokenType::RIGHT_BRACE)) {
+		node->m_children.push_back(ParseStatement(node));
+	}
+	//}
+	if (!Match(TokenType::RIGHT_BRACE)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid compound statement: '" + token.m_content + "', expected '}' at the end of compound statement",
+			token.m_line,
+			token.m_column
+		);
+	}
+
+	return node;
+}
+
+AstNode* Parser::ParseExpressionStmt(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::EXPR_STMT, parent);
+	m_nodes.push_back(node);
+	//expression
+	if (!Check(TokenType::SEMICOLON)) {
+		node->m_children.push_back(ParseExpression(node));
+	}
+	//;
+	if (!Match(TokenType::SEMICOLON)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Missing semicolon ';' after expression statement",
+			token.m_line,
+			token.m_column + token.m_content.size()
+		);
+	}
+	return node;
+}
+
+AstNode* Parser::ParseVariableDeclaration(AstNode* parent, bool consumeSemicolo) {
+	AstNode* node = new AstNode(NodeType::VAR_DECL, parent);
+	m_nodes.push_back(node);
+	//let or const
+	const Token& token = Peek();
+	if (!(Check(TokenType::LET) || Check(TokenType::CONST))) {
+		throw ParserException(
+			"Invalid variable declaration: '" + token.m_content + "', expected 'let' or 'const' at the beginning of variable declaration",
+			token.m_line,
+			token.m_column
+		);
+	}
+	node->m_token = token;
+	Consume();
+	//type
+	node->m_children.push_back(ParseType(node));
+	//declarator_list
+	node->m_children.push_back(ParseDeclaratorList(node));
+	//;
+	if (consumeSemicolo && !Match(TokenType::SEMICOLON)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Missing semicolon ';' after variable declaration",
+			token.m_line,
+			token.m_column + token.m_content.size()
+		);
+	}
+	return node;
+}
+
+AstNode* Parser::ParseDeclaratorList(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::DECLARATOR_LIST, parent);
+	m_nodes.push_back(node);
+	//declarator
+	node->m_children.push_back(ParseDeclarator(node));
+	//, declarator
+	while (Match(TokenType::COMMA)) {
+		node->m_children.push_back(ParseDeclarator(node));
+	}
+	return node;
+}
+
+AstNode* Parser::ParseDeclarator(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::DECLARATOR, parent);
+	m_nodes.push_back(node);
+	//identifier
+	{
+		const Token& token = Peek();
+		if (!Match(TokenType::IDENTIFIER)) {
+			throw ParserException(
+				"Invalid declarator: expected identifier",
+				token.m_line,
+				token.m_column
+			);
+		}
+		AstNode* target = new AstNode(NodeType::IDENTIFIER, token, node);
+		node->m_children.push_back(target);
+		m_nodes.push_back(target);
+	}
+	//array [
+	while (Match(TokenType::LEFT_SQUARE)) {
+		//expression
+		if (!Check(TokenType::RIGHT_SQUARE)) {
+			node->m_children.push_back(ParseExpression(node));
+		}
+		//]
+		if (!Match(TokenType::RIGHT_SQUARE)) {
+			const Token& token = Peek();
+			throw ParserException(
+				"Invalid array declarator: '" + token.m_content + "', expected ']' after array size expression",
+				token.m_line,
+				token.m_column
+			);
+		}
+	}
+	// [ "=" initializer ]
+	if (Check(TokenType::ASSIGN)) {
+		//=
+		node->m_token = Peek();
+		Consume();
+		//initializer
+		node->m_children.push_back(ParseInitializer(node));
+	}
+
+	return node;
+}
+
+AstNode* Parser::ParseStructDefinition(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::STRUCT_DEF, parent);
+	m_nodes.push_back(node);
+	//struct
+	node->m_token = Peek();
+	Consume();
+	//indentifier
+	{
+		const Token& token = Peek();
+		if (!Match(TokenType::IDENTIFIER)) {
+			throw ParserException(
+				"Invalid struct definition: '" + token.m_content + "', expected identifier after 'struct'",
+				token.m_line,
+				token.m_column
+			);
+		}
+		AstNode* target = new AstNode(NodeType::IDENTIFIER, token, node);
+		node->m_children.push_back(target);
+		m_nodes.push_back(target);
+	}
+	//{
+	if (!Match(TokenType::LEFT_BRACE)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid struct definition: '" + token.m_content + "', expected '{' after struct name",
+			token.m_line,
+			token.m_column + token.m_content.size()
+		);
+	}
+	//struct member declaration
+	while (!Check(TokenType::RIGHT_BRACE)) {
+		node->m_children.push_back(ParseStructMemberDeclaration(node));
+	}
+	//}
+	if (!Match(TokenType::RIGHT_BRACE)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid struct definition: '" + token.m_content + "', expected '}' at the end of struct definition",
+			token.m_line,
+			token.m_column
+		);
+	}
+	return node;
+}
+
+AstNode* Parser::ParseStructMemberDeclaration(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::STRUCT_MEMBER_DECL, parent);
+	m_nodes.push_back(node);
+	//type
+	node->m_children.push_back(ParseType(node));
+	//declarator_list
+	node->m_children.push_back(ParseDeclaratorList(node));
+	//;
+	if (!Match(TokenType::SEMICOLON)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Missing semicolon ';' after struct member declaration",
+			token.m_line,
+			token.m_column + token.m_content.size()
+		);
+	}
+}
+
+AstNode* Parser::ParseIfStmt(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::IF_STMT, parent);
+	m_nodes.push_back(node);
+	//if
+	node->m_token = Peek();
+	Consume();
+	// "("
+	if (!Match(TokenType::LEFT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid if statement: expected '(' after 'if'",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//expression
+	node->m_children.push_back(ParseExpression(node));
+	// ")"
+	if (!Match(TokenType::RIGHT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid if statement: expected ')' after condition expression",
+			token.m_line,
+			token.m_column
+		);
+	}
+	// then
+	AstNode* thenBranch = ParseStatement(node);
+	node->m_children.push_back(thenBranch);
+	//else
+	if (Match(TokenType::ELSE)) {
+		AstNode* elseBranch = ParseStatement(node);
+		node->m_children.push_back(elseBranch);
+	}
+	return node;
+}
+
+AstNode* Parser::ParseSwitchStmt(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::SWITCH_STMT, parent);
+	m_nodes.push_back(node);
+	//switch
+	node->m_token = Peek();
+	Consume();
+	// (
+	if (!Match(TokenType::LEFT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid switch statement: expected '(' after 'switch'",
+			token.m_line,
+			token.m_column
+		);
+	}
+	// statement
+	node->m_children.push_back(ParseExpression(node));
+	// )
+	if (!Match(TokenType::RIGHT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid switch statement: expected ')' after switch expression",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//{
+	if (!Match(TokenType::LEFT_BRACE)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid switch statement: expected '{' at the beginning of switch body",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//case
+	while (Check(TokenType::CASE)) {
+		node->m_children.push_back(ParseCaseClause(node));
+	}
+	//default
+	if (Check(TokenType::DEFAULT)) {
+		node->m_children.push_back(ParseDefaultClause(node));
+	}
+	return node;
+}
+
+AstNode* Parser::ParseCaseClause(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::CASE_CLAUSE, parent);
+	m_nodes.push_back(node);
+	//case
+	node->m_token = Peek();
+	Consume();
+	//literal
+	node->m_children.push_back(ParseLiteral(node));
+	//:
+	if (!Match(TokenType::COLON)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid case clause: '" + token.m_content + "', expected ':' after case literal",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//statement
+	{
+		const Token* pToken = &Peek();
+		while (pToken->m_type != TokenType::CASE
+			&& pToken->m_type != TokenType::DEFAULT
+			&& pToken->m_type != TokenType::RIGHT_BRACE)
+		{
+			node->m_children.push_back(ParseStatement(node));
+			pToken = &Peek();
+		}
+	}
+	return node;
+}
+
+AstNode* Parser::ParseDefaultClause(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::DEFAULT_CLAUSE, parent);
+	m_nodes.push_back(node);
+	//default
+	node->m_token = Peek();
+	Consume();
+	//:
+	if (!Match(TokenType::COLON)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid case clause: '" + token.m_content + "', expected ':' after case literal",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//statement
+	{
+		const Token* pToken = &Peek();
+		while (pToken->m_type != TokenType::RIGHT_BRACE)
+		{
+			node->m_children.push_back(ParseStatement(node));
+			pToken = &Peek();
+		}
+	}
+	return node;
+}
+
+AstNode* Parser::ParseWhileStmt(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::WHILE_STMT, parent);
+	m_nodes.push_back(node);
+	//while
+	node->m_token = Peek();
+	Consume();
+	// (
+	if (!Match(TokenType::LEFT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid while statement: expected '(' after 'while'",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//expression
+	node->m_children.push_back(ParseExpression(node));
+	//)
+	if (!Match(TokenType::RIGHT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid while statement: expected ')' after condition expression",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//statement
+	node->m_children.push_back(ParseStatement(node));
+	return node;
+}
+
+AstNode* Parser::ParseForStmt(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::FOR_STMT, parent);
+	m_nodes.push_back(node);
+	//for
+	node->m_token = Peek();
+	Consume();
+	//(
+	if (!Match(TokenType::LEFT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid for statement: expected '(' after 'for'",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//initialization
+	if (!Check(TokenType::SEMICOLON)) {
+		if (Check(TokenType::LET) || Check(TokenType::CONST))
+			node->m_children.push_back(ParseVariableDeclaration(node, false));
+		else
+			node->m_children.push_back(ParseExpressionStmt(node));
+	}
+	//;
+	if (!Match(TokenType::SEMICOLON)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Missing semicolon ';' after for-loop initialization",
+			token.m_line,
+			token.m_column + token.m_content.size()
+		);
+	}
+	//condition
+	if (!Check(TokenType::SEMICOLON)) {
+		node->m_children.push_back(ParseExpression(node));
+	}
+	//;
+	if (!Match(TokenType::SEMICOLON)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Missing semicolon ';' after for-loop condition",
+			token.m_line,
+			token.m_column + token.m_content.size()
+		);
+	}
+	//increment
+	if (!Check(TokenType::RIGHT_PAREN)) {
+		node->m_children.push_back(ParseExpression(node));
+	}
+	//)
+	if (!Match(TokenType::RIGHT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid for statement: expected ')' after for-loop increment",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//statement
+	node->m_children.push_back(ParseStatement(node));
+	return node;
+}
+
+AstNode* Parser::ParseReturnStmt(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::RETURN_STMT, parent);
+	m_nodes.push_back(node);
+	//return
+	node->m_token = Peek();
+	Consume();
+	//expression
+	if (!Check(TokenType::SEMICOLON)) {
+		node->m_children.push_back(ParseExpression(node));
+	}
+	//;
+	if (!Match(TokenType::SEMICOLON)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Missing semicolon ';' after return statement",
+			token.m_line,
+			token.m_column + token.m_content.size()
+		);
+	}
+	return node;
+}
+
+AstNode* Parser::ParseBreakStmt(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::BREAK_STMT, parent);
+	m_nodes.push_back(node);
+	//break
+	node->m_token = Peek();
+	Consume();
+	//;
+	if (!Match(TokenType::SEMICOLON)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Missing semicolon ';' after break statement",
+			token.m_line,
+			token.m_column + token.m_content.size()
+		);
+	}
+	return node;
+}
+
+AstNode* Parser::ParseContinueStmt(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::CONTINUE_STMT, parent);
+	m_nodes.push_back(node);
+	//continue
+	node->m_token = Peek();
+	Consume();
+	//;
+	if (!Match(TokenType::SEMICOLON)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Missing semicolon ';' after continue statement",
+			token.m_line,
+			token.m_column + token.m_content.size()
+		);
+	}
+	return node;
+}
+
+AstNode* Parser::ParseExpression(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::EXPRESSION, parent);
+	m_nodes.push_back(node);
+	//assignment
+	node->m_children.push_back(ParseAssignment(node));
+	//, assignment
+	while (Match(TokenType::COMMA)) {
+		node->m_children.push_back(ParseAssignment(node));
+	}
+	return node;
+}
+
+AstNode* Parser::ParseAssignment(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::ASSIGN_EXPR, parent);
+	m_nodes.push_back(node);
+	//conditional
+	node->m_children.push_back(ParseConditional(node));
+	//assignment_operator assignment
+	if (Check(TokenType::ASSIGN) || Check(TokenType::SELF_ADD)
+		|| Check(TokenType::SELF_SUB) || Check(TokenType::SELF_MUL)
+		|| Check(TokenType::SELF_DIV) || Check(TokenType::SELF_MODULO))
+	{
+		//=, +=, -=, *=, /=, %=
+		node->m_token = Peek();
+		Consume();
+		//assignment
+		node->m_children.push_back(ParseAssignment(node));
+	}
+	return node;
+}
+
+AstNode* Parser::ParseConditional(AstNode* parent) {
+	//logical_or
+	AstNode* condition = ParseLogicalOr(parent);
+	//? expression : conditional
+	if (Match(TokenType::QUESTION)) {
+		AstNode* node = new AstNode(NodeType::CONDITIONAL_EXPR, parent);
+		m_nodes.push_back(node);
+		//condition
+		node->m_children.push_back(condition);
+		//true
+		node->m_children.push_back(ParseExpression(node));
+		//:
+		if (!Match(TokenType::COLON)) {
+			const Token& token = Peek();
+			throw ParserException(
+				"Invalid conditional expression: '" + token.m_content + "', expected ':' after true expression",
+				token.m_line,
+				token.m_column
+			);
+		}
+		//false
+		node->m_children.push_back(ParseConditional(node));
+		return node;
+	}
+	return condition;
+}
+
+//lower {ops lower}
+AstNode* Parser::ParseBinary(AstNode* parent, std::function<AstNode* (AstNode*)> lower, const std::vector<TokenType::Type>& ops) {
+	AstNode* left = lower(parent);
+	while (std::any_of(ops.begin(), ops.end(), [&](TokenType::Type t) { return Check(t); })) {
+		AstNode* node = new AstNode(NodeType::BINARY_EXPR, parent);
+		m_nodes.push_back(node);
+		node->m_token = Peek();
+		Consume();
+		left->m_parent = node;
+		node->m_children.push_back(left);
+		node->m_children.push_back(lower(node));
+		left = node;
+	}
+	return left;
+}
+
+
+AstNode* Parser::ParseLogicalOr(AstNode* parent) {
+	//logical_and {|| logical_and}
+	return ParseBinary(parent, std::bind(&Parser::ParseLogicalAnd, this, std::placeholders::_1), { TokenType::OR });
+}
+
+AstNode* Parser::ParseLogicalAnd(AstNode* parent) {
+	//bit_or {&& bit_or}
+	return ParseBinary(parent, std::bind(&Parser::ParseBitOr, this, std::placeholders::_1), { TokenType::AND });
+}
+
+AstNode* Parser::ParseBitOr(AstNode* parent) {
+	//bit_xor {| bit_xor}
+	return ParseBinary(parent, std::bind(&Parser::ParseBitXOr, this, std::placeholders::_1), { TokenType::BIT_OR });
+}
+
+AstNode* Parser::ParseBitXOr(AstNode* parent) {
+	//bit_and {^ bit_and}
+	return ParseBinary(parent, std::bind(&Parser::ParseBitAnd, this, std::placeholders::_1), { TokenType::XOR });
+}
+
+AstNode* Parser::ParseBitAnd(AstNode* parent) {
+	//equality { & equality }
+	return ParseBinary(parent, std::bind(&Parser::ParseEquality, this, std::placeholders::_1), { TokenType::BIT_AND });
+}
+
+AstNode* Parser::ParseEquality(AstNode* parent) {
+	//relational { (== | !=) relational }
+	return ParseBinary(parent, std::bind(&Parser::ParseRelational, this, std::placeholders::_1), { TokenType::EQUAL, TokenType::NOT_EQUAL });
+}
+
+AstNode* Parser::ParseRelational(AstNode* parent) {
+	//shift {(< | > | <= | >=) shift}
+	return ParseBinary(parent, std::bind(&Parser::ParseShift, this, std::placeholders::_1),
+		{ TokenType::LESS, TokenType::GREATER, TokenType::LESS_EQUAL, TokenType::GREATER_EQUAL });
+}
+
+AstNode* Parser::ParseShift(AstNode* parent) {
+	//additive {(<< | >>) additive}
+	return ParseBinary(parent, std::bind(&Parser::ParseAdditive, this, std::placeholders::_1),
+		{ TokenType::LEFT_MOVE, TokenType::RIGHT_MOVE });
+}
+
+AstNode* Parser::ParseAdditive(AstNode* parent) {
+	//multiplicative {(+ | -) multiplicative}
+	return ParseBinary(parent, std::bind(&Parser::ParseMultiplicative, this, std::placeholders::_1),
+		{ TokenType::ADD, TokenType::SUBTRACT });
+}
+
+AstNode* Parser::ParseMultiplicative(AstNode* parent) {
+	//unary {(* | / | %) unary}
+	return ParseBinary(parent, std::bind(&Parser::ParseUnary, this, std::placeholders::_1),
+		{ TokenType::MULTIPLY, TokenType::DIVIDE, TokenType::MODULO });
+}
+
+AstNode* Parser::ParseUnary(AstNode* parent) {
+	std::vector<Token> ops;
+	while (Check(TokenType::ADD) || Check(TokenType::SUBTRACT)
+		|| Check(TokenType::NOT) || Check(TokenType::BIT_NOT)
+		|| Check(TokenType::SELF_ADD) || Check(TokenType::SELF_SUB)) {
+		ops.push_back(Peek());
+		Consume();
+	}
+
+	//right associative
+	AstNode* node = ParsePostfix(parent);
+	for (auto it = ops.rbegin(); it != ops.rend(); ++it) {
+		AstNode* unary = new AstNode(NodeType::UNARY_EXPR, parent);
+		m_nodes.push_back(unary);
+		unary->m_token = *it;
+		unary->m_children.push_back(node);
+		node->m_parent = unary;
+		node = unary;
+	}
+	return node;
+}
+
+
+AstNode* Parser::ParsePostfix(AstNode* parent) {
+	//primary
+	AstNode* current = ParsePrimary(parent);
+	//m_nodes.push_back(current);
+
+	// (++ | -- | . identifier | [ expression ] | ( [ argument_list ] ))
+	while (Check(TokenType::SELF_ADD) || Check(TokenType::SELF_SUB)
+		|| Check(TokenType::DOT) || Check(TokenType::LEFT_SQUARE)
+		|| Check(TokenType::LEFT_PAREN))
+	{
+		const Token& token = Peek();
+
+		if (Match(TokenType::SELF_ADD) || Match(TokenType::SELF_SUB)) {
+			//++ --
+			AstNode* postfix = new AstNode(NodeType::UNARY_EXPR);
+			m_nodes.push_back(postfix);
+			postfix->m_token = token;
+			postfix->m_children.push_back(current);
+			current->m_parent = postfix;
+			// left associative
+			current = postfix;
+		}
+		else if (Match(TokenType::DOT)) {
+			// . identifier
+			AstNode* member = new AstNode(NodeType::MEMBER_EXPR);
+			m_nodes.push_back(member);
+			member->m_token = token;
+			member->m_children.push_back(current);
+			current->m_parent = member;
+			// identifier
+			const Token& idToken = Peek();
+			if (!Match(TokenType::IDENTIFIER)) {
+				throw ParserException(
+					"Invalid member access: expected identifier after '.'",
+					idToken.m_line,
+					idToken.m_column
+				);
+			}
+			AstNode* idNode = new AstNode(NodeType::IDENTIFIER, idToken, member);
+			member->m_children.push_back(idNode);
+			m_nodes.push_back(idNode);
+			// left associative
+			current = member;
+		}
+		else if (Match(TokenType::LEFT_SQUARE)) {
+			//[ expression ]
+			AstNode* index = new AstNode(NodeType::INDEX_EXPR);
+			m_nodes.push_back(index);
+			index->m_token = token;
+			index->m_children.push_back(current);
+			current->m_parent = index;
+			// expression
+			index->m_children.push_back(ParseExpression(index));
+			// ]
+			if (!Match(TokenType::RIGHT_SQUARE)) {
+				const Token& rbracketToken = Peek();
+				throw ParserException(
+					"Invalid index expression: '" + rbracketToken.m_content + "', expected ']' after index expression",
+					rbracketToken.m_line,
+					rbracketToken.m_column
+				);
+			}
+			// left associative
+			current = index;
+		}
+		else if (Match(TokenType::LEFT_PAREN)) {
+			// ( [ argument_list ] )
+			AstNode* call = new AstNode(NodeType::CALL_EXPR, parent);
+			m_nodes.push_back(call);
+			call->m_token = token;
+			call->m_children.push_back(current);
+			current->m_parent = call;
+			// argument_list
+			if (!Check(TokenType::RIGHT_PAREN)) {
+				call->m_children.push_back(ParseArgumentList(call));
+			}
+			// )
+			if (!Match(TokenType::RIGHT_PAREN)) {
+				const Token& token = Peek();
+				throw ParserException(
+					"Invalid function call: expected ')' after argument list",
+					token.m_line,
+					token.m_column
+				);
+			}
+			// left associative
+			current = call;
+		}
+	}
+	return current;
+}
+
+//primary is a logical node
+AstNode* Parser::ParsePrimary(AstNode* parent) {
+	const Token& token = Peek();
+	AstNode* node = nullptr;
+
+	switch (token.m_type) {
+	case TokenType::IDENTIFIER: {
+		// identifier
+		node = new AstNode(NodeType::IDENTIFIER, token, parent);
+		m_nodes.push_back(node);
+		Consume();
+		break;
+	}
+	case TokenType::INT_LITERAL:
+	case TokenType::DOUBLE_LITERAL:
+	case TokenType::CHARACTER_LITERAL:
+	case TokenType::STRING_LITERAL:
+	case TokenType::TRUE:
+	case TokenType::FALSE:
+	case TokenType::NULL_LITERAL: {
+		// literal
+		node = ParseLiteral(parent);
+		break;
+	}
+	case TokenType::LEFT_PAREN: {
+		// ( expression )
+		Consume(); // consume '('
+		node = new AstNode(NodeType::GROUP_EXPR, parent);
+		m_nodes.push_back(node);
+		node->m_token = token;
+
+		// expression
+		node->m_children.push_back(ParseExpression(node));
+
+		// )
+		if (!Match(TokenType::RIGHT_PAREN)) {
+			const Token& t = Peek();
+			throw ParserException(
+				"Invalid grouping expression: expected ')' after expression",
+				t.m_line,
+				t.m_column
+			);
+		}
+		break;
+	}
+	case TokenType::LAMBDA: { // function literal, ¼ÙÉè lambda ¹Ø¼ü×ÖÊÇ TokenType::LAMBDA
+		node = ParseFunctionLiteral(parent);
+		break;
+	}
+	default: {
+		throw ParserException(
+			"Invalid primary expression: '" + token.m_content +
+			"', expected identifier, literal, or '('",
+			token.m_line,
+			token.m_column
+		);
+	}
+	}
+
+	return node;
+}
+
+
+AstNode* Parser::ParseArgumentList(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::ARGUMENT_LIST, parent);
+	m_nodes.push_back(node);
+	//expression
+	node->m_children.push_back(ParseExpression(node));
+	//, expression
+	while (Match(TokenType::COMMA)) {
+		node->m_children.push_back(ParseExpression(node));
+	}
+	return node;
+}
+
+AstNode* Parser::ParseInitializer(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::INITIALIZER, parent);
+	m_nodes.push_back(node);
+	// . identifier = expression (struct member initializer)
+	if (Match(TokenType::DOT)) {
+		//indentifier
+		{
+			const Token& token = Peek();
+			if (!Match(TokenType::IDENTIFIER)) {
+				throw ParserException(
+					"Invalid struct initializer: expected identifier after '.'",
+					token.m_line,
+					token.m_column
+				);
+			}
+			AstNode* target = new AstNode(NodeType::IDENTIFIER, token, node);
+			node->m_children.push_back(target);
+			m_nodes.push_back(target);
+		}
+		// =
+		if (!Match(TokenType::ASSIGN)) {
+			const Token& token = Peek();
+			throw ParserException(
+				"Invalid struct initializer: '" + token.m_content + "', expected '=' after member name",
+				token.m_line,
+				token.m_column
+			);
+		}
+		//expression
+		node->m_children.push_back(ParseExpression(node));
+	}
+	// { initializer_list } (array or struct initializer)
+	else if (Match(TokenType::LEFT_BRACE)) {
+		//initializer_list
+		if (!Check(TokenType::RIGHT_BRACE)) {
+			node->m_children.push_back(ParseInitializerList(node));
+		}
+		//}
+		if (!Match(TokenType::RIGHT_BRACE)) {
+			const Token& token = Peek();
+			throw ParserException(
+				"Invalid initializer list: '" + token.m_content + "', expected '}' at the end of initializer list",
+				token.m_line,
+				token.m_column
+			);
+		}
+	}
+	//expression
+	else {
+		node->m_children.push_back(ParseExpression(node));
+	}
+	return node;
+}
+
+AstNode* Parser::ParseInitializerList(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::INITIALIZER_LIST, parent);
+	m_nodes.push_back(node);
+	//initializer
+	node->m_children.push_back(ParseInitializer(node));
+	//, initializer
+	while (Match(TokenType::COMMA)) {
+		node->m_children.push_back(ParseInitializer(node));
+	}
+	return node;
+}
+
+AstNode* Parser::ParseFunctionLiteral(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::FUNCTION_LITERAL, parent);
+	m_nodes.push_back(node);
+	//lambda
+	if (!Match(TokenType::LAMBDA)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid function literal: '" + token.m_content + "', expected 'lambda' at the beginning of function literal",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//(
+	if (!Match(TokenType::LEFT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid function literal: '" + token.m_content + "', expected '(' after 'lambda'",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//parameter_list
+	if (!Check(TokenType::RIGHT_PAREN)) {
+		node->m_children.push_back(ParseParameterList(node));
+	}
+	//)
+	if (!Match(TokenType::RIGHT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid function literal: '" + token.m_content + "', expected ')' after parameter list",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//->
+	if (!Match(TokenType::BELONG_TO)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid function literal: '" + token.m_content + "', expected '->' after parameter list",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//type
+	node->m_children.push_back(ParseType(node));
+	//compound_stmt
+	node->m_children.push_back(ParseCompoundStmt(node));
+	return node;
+}
+
+AstNode* Parser::ParseLiteral(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::LITERAL, parent);
+	m_nodes.push_back(node);
+	node->m_token = Peek();
+	//INT_LITERAL | DOUBLE_LITERAL | CHARACTER_LITERAL | STRING_LITERAL | BOOL_LITERAL| NULL_LITERAL
+	Consume();
+	return node;
+}
+
+//type is a logical node
+AstNode* Parser::ParseType(AstNode* parent) {
+	AstNode* node = nullptr;
+	if (Check(TokenType::IDENTIFIER)) {
+		//user-defined type
+		const Token& token = Peek();
+		node = new AstNode(NodeType::IDENTIFIER, token, parent);
+		m_nodes.push_back(node);
+		Consume();
+	}
+	else if (Check(TokenType::INT) || Check(TokenType::DOUBLE)
+		|| Check(TokenType::CHAR) || Check(TokenType::STRING)
+		|| Check(TokenType::BOOL) || Check(TokenType::VOID))
+	{
+		//builtin type
+		node = ParseBuiltinType(parent);
+	}
+	else if (Check(TokenType::LEFT_PAREN)) {
+		//function type
+		node = ParseFunctionType(parent);
+	}
+	else {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid type: '" + token.m_content + "', expected type name, builtin type, or 'lambda'",
+			token.m_line,
+			token.m_column
+		);
+	}
+	return node;
+}
+
+AstNode* Parser::ParseBuiltinType(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::BUILTIN_TYPE, parent);
+	m_nodes.push_back(node);
+	//int | double | char | string | bool | void
+	node->m_token = Peek();
+	Consume();
+	return node;
+}
+
+AstNode* Parser::ParseFunctionType(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::FUNCTION_LITERAL, parent);
+	m_nodes.push_back(node);
+	//(
+	if (!Match(TokenType::LEFT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid function type: '" + token.m_content + "', expected '(' at the beginning of function type",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//parameter_type_list
+	if (!Check(TokenType::RIGHT_PAREN)) {
+		node->m_children.push_back(ParseParameterTypeList(node));
+	}
+	//->
+	if (!Match(TokenType::RIGHT_PAREN)) {
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid function type: '" + token.m_content + "', expected ')' after parameter type list",
+			token.m_line,
+			token.m_column
+		);
+	}
+	//type
+	node->m_children.push_back(ParseType(node));
+	return node;
+}
+
+AstNode* Parser::ParseParameterTypeList(AstNode* parent) {
+	AstNode* node = new AstNode(NodeType::PARAMETER_TYPE_LIST, parent);
+	m_nodes.push_back(node);
+	//type
+	node->m_children.push_back(ParseType(node));
+	//, type
+	while (Match(TokenType::COMMA)) {
+		node->m_children.push_back(ParseType(node));
+	}
+	return node;
+}
+
+void Parser::PrintAstTree(AstNode* node, int depth) {
+	if (!node)
+		return;
+	std::string indent(depth * 2, ' ');
+	std::cout << indent << NodeTypeToString(node->m_type);
+	if (node->m_token.m_content != "")
+		std::cout << " (" << node->m_token.m_content << ")";
+	std::cout << std::endl;
+	for (AstNode* child : node->m_children) {
+		PrintAstTree(child, depth + 1);
+	}
 }

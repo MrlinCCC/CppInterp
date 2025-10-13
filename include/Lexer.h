@@ -6,6 +6,7 @@
 #include "Singleton.h"
 #include <stdexcept>
 #include<optional>
+#include "Exception.hpp"
 
 namespace CppInterp {
 
@@ -220,30 +221,6 @@ namespace CppInterp {
 
 		Transition(State::Type next, TokenType::Type tokenType, Action action)
 			:m_next(next), m_tokenType(tokenType), m_action(action) {
-		}
-	};
-
-
-	class LexerException : public std::runtime_error {
-	public:
-		LexerException(const std::string& prefix, char ch, int row, int col)
-			: std::runtime_error(BuildMessage(prefix, ch, row, col)),
-			m_ch(ch), m_row(row), m_col(col) {
-		}
-
-		inline char GetChar() const noexcept { return m_ch; }
-		inline int GetRow() const noexcept { return m_row; }
-		inline int GetCol() const noexcept { return m_col; }
-
-	private:
-		char m_ch;
-		int m_row;
-		int m_col;
-
-		inline static std::string BuildMessage(const std::string& prefix, char ch, int row, int col) {
-			return prefix + std::string(1, ch) +
-				"' at line " + std::to_string(row) +
-				", column " + std::to_string(col);
 		}
 	};
 
