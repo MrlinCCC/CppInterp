@@ -329,6 +329,9 @@ namespace CppInterp {
 		m_stateTransitionTable[State::START].emplace(
 			Character::COLON, Transition(State::COLON, TokenType::COLON, Action::FORWARD)
 		);
+		m_stateOtherTransitionTable.emplace(
+			State::COLON, Transition(State::START, TokenType::COLON, Action::RETRACT)
+		);
 		m_stateTransitionTable[State::START].emplace(
 			Character::QUESTION, Transition(State::START, TokenType::QUESTION, Action::APPEND)
 		);

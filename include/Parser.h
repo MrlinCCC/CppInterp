@@ -57,7 +57,9 @@ namespace CppInterp {
 		constexpr Type BREAK_STMT = 22;
 		constexpr Type CONTINUE_STMT = 23;
 		constexpr Type STRUCT_DEF = 24;
-		constexpr Type STRUCT_MEMBER_DECL = 25;
+		constexpr Type STRUCT_DECLARATOR_LIST = 25;
+		constexpr Type STRUCT_MEMBER_DECL = 26;
+		constexpr Type ARRAY = 26;
 
 		// --- Expressions ---
 		constexpr Type EXPRESSION = 30;
@@ -71,7 +73,7 @@ namespace CppInterp {
 		constexpr Type MEMBER_EXPR = 38;
 		constexpr Type GROUP_EXPR = 40; //( expression )
 		constexpr Type INITIALIZER = 41;
-		constexpr Type INITIALIZER_LIST = 42;
+		constexpr Type DESIGNATED_INITIALIZER = 42;
 		constexpr Type ARGUMENT_LIST = 43;
 		constexpr Type FUNCTION_LITERAL = 44;
 
@@ -81,10 +83,9 @@ namespace CppInterp {
 		constexpr Type LITERAL = 52;
 
 		// --- Types ---
-		constexpr Type TYPE = 60;
-		constexpr Type BUILTIN_TYPE = 61;
-		constexpr Type FUNCTION_TYPE = 62;
-		constexpr Type PARAMETER_TYPE_LIST = 63;
+		constexpr Type BUILTIN_TYPE = 60;
+		constexpr Type FUNCTION_TYPE = 61;
+		constexpr Type PARAMETER_TYPE_LIST = 62;
 
 	};
 
@@ -113,6 +114,7 @@ namespace CppInterp {
 		case NodeType::BREAK_STMT: return "BREAK_STMT";
 		case NodeType::CONTINUE_STMT: return "CONTINUE_STMT";
 		case NodeType::STRUCT_DEF: return "STRUCT_DEF";
+		case NodeType::STRUCT_DECLARATOR_LIST: return "STRUCT_DECLARATOR_LIST";
 		case NodeType::STRUCT_MEMBER_DECL: return "STRUCT_MEMBER_DECL";
 
 		case NodeType::EXPRESSION: return "EXPRESSION";
@@ -126,7 +128,7 @@ namespace CppInterp {
 		case NodeType::MEMBER_EXPR: return "MEMBER_EXPR";
 		case NodeType::GROUP_EXPR: return "GROUP_EXPR";
 		case NodeType::INITIALIZER: return "INITIALIZER";
-		case NodeType::INITIALIZER_LIST: return "INITIALIZER_LIST";
+		case NodeType::DESIGNATED_INITIALIZER: return "DESIGNATED_INITIALIZER";
 		case NodeType::ARGUMENT_LIST: return "ARGUMENT_LIST";
 		case NodeType::FUNCTION_LITERAL: return "FUNCTION_LITERAL";
 
@@ -134,7 +136,6 @@ namespace CppInterp {
 		case NodeType::IDENTIFIER: return "IDENTIFIER";
 		case NodeType::LITERAL: return "LITERAL";
 
-		case NodeType::TYPE: return "TYPE";
 		case NodeType::BUILTIN_TYPE: return "BUILTIN_TYPE";
 		case NodeType::FUNCTION_TYPE: return "FUNCTION_TYPE";
 		case NodeType::PARAMETER_TYPE_LIST: return "PARAMETER_TYPE_LIST";
@@ -162,7 +163,14 @@ namespace CppInterp {
 
 	class Parser {
 	public:
+		Parser() = default;
 		AstNode* Parse(const std::string& str);
+		AstNode* Parse(const std::vector<Token>& tokens);
+
+		~Parser();
+
+		inline AstNode* GetAstRoot() const { return m_root; }
+		inline const std::vector<AstNode*>& GetNodes() const { return m_nodes; }
 
 		static void PrintAstTree(AstNode* node, int depth = 0);
 	private:
@@ -217,6 +225,7 @@ namespace CppInterp {
 		AstNode* ParseDeclaratorList(AstNode* parent);
 		AstNode* ParseDeclarator(AstNode* parent);
 		AstNode* ParseStructDefinition(AstNode* parent);
+		AstNode* ParseStructDecaratorList(AstNode* parent);
 		AstNode* ParseStructMemberDeclaration(AstNode* parent);
 		AstNode* ParseIfStmt(AstNode* parent);
 		AstNode* ParseSwitchStmt(AstNode* parent);
@@ -246,7 +255,8 @@ namespace CppInterp {
 		AstNode* ParsePrimary(AstNode* parent);
 		AstNode* ParseArgumentList(AstNode* parent);
 		AstNode* ParseInitializer(AstNode* parent);
-		AstNode* ParseInitializerList(AstNode* parent);
+		AstNode* ParseDesignatedInitializerList(AstNode* parent);
+		AstNode* ParseDesignatedInitializer(AstNode* parent);
 		AstNode* ParseFunctionLiteral(AstNode* parent);
 
 		AstNode* ParseLiteral(AstNode* parent);
@@ -258,23 +268,25 @@ namespace CppInterp {
 
 		AstNode* ParseBinary(AstNode* parent, std::function<AstNode* (AstNode*)> lower, const std::vector<TokenType::Type>& ops);
 
-		// X {, X}
+		// X {splitToken X}
 		template <typename ParseFunc>
-		inline AstNode* ParseCommaSeparatedListTemplate(
+		inline AstNode* ParseSeparatedListTemplate(
 			NodeType::Type type,
 			AstNode* parent,
-			ParseFunc parseElementFunc
+			ParseFunc parseElementFunc,
+			TokenType::Type splitToken = TokenType::COMMA
 		) {
 			//element, if only one node direct return
 			AstNode* first = (this->*parseElementFunc)(parent);
-			if (!Check(TokenType::COMMA))
+			if (!Check(splitToken))
 				return first;
 			//list parent
 			AstNode* node = new AstNode(type, parent);
 			m_nodes.push_back(node);
 			node->m_children.push_back(first);
-			//, element
-			while (Match(TokenType::COMMA)) {
+			first->m_parent = node;
+			//splitToken element
+			while (Match(splitToken)) {
 				node->m_children.push_back((this->*parseElementFunc)(node));
 			}
 			return node;
@@ -282,7 +294,8 @@ namespace CppInterp {
 		//template <typename ParseFunc>
 		//inline AstNode* ParseCommaSeparatedListTemplate(NodeType::Type type, AstNode* parent, ParseFunc parseElementFunc)
 		//{
-		//	AstNode* node = new AstNode(type, parent); m_nodes.push_back(node);
+		//	AstNode* node = new AstNode(type, parent);
+		//	m_nodes.push_back(node);
 		//	//element 
 		//	node->m_children.push_back((this->*parseElementFunc)(node)); // , element 
 		//	while (Match(TokenType::COMMA))

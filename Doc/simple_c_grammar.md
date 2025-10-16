@@ -25,7 +25,8 @@ expression_stmt ::= [ expression ] ";" ;
 variable_declaration ::= ("let" | "const") type declarator_list ";" ;
 declarator_list ::= declarator { "," declarator } ;
 declarator ::= identifier { "[" [ expression ] "]" } [ "=" initializer ] ;
-struct_definition ::= "struct" identifier "{" { struct_member_declaration } "}" ";" ;
+struct_definition ::= "struct" identifier "{" [ struct_declarator_list ] "}" ";" ;
+struct_declarator_list ::= struct_member_declaration { struct_member_declaration } ;
 struct_member_declaration ::= type declarator_list ";" ;
 ------------- Condition --------------
 if_stmt ::= "if" "(" expression ")" statement [ "else" statement ] ;
@@ -60,11 +61,11 @@ primary ::= identifier
           | literal
           | "(" expression ")"
           | function_literal;
-argument_list ::= expression { "," expression } ;
+argument_list ::= assignment { "," assignment } ;
 initializer ::= assignment
-                     | "." identifier "=" initializer
-                     | "{" [ initializer_list ] "}" ;
-initializer_list ::= initializer { "," initializer } ;
+              | "{" [ designated_initializer_list ] "}" ;
+designated_initializer_list ::= designated_initializer { "," designated_initializer } ;
+designated_initializer ::= [ "." identifier "=" ] initializer ;
 function_literal ::= "lambda" "(" [ parameter_list ] ")" "->" type compound_stmt ;
 ---------------- Literals ----------------
 literal ::= INT_LITERAL
@@ -97,22 +98,21 @@ parameter_type_list ::= type { "," type } ;
 - Statement: "compound_stmt", "expression_stmt", "variable_declaration", "declarator_list", "declarator", "struct_definition", "struct_member_declaration"
 - Condition: "if_stmt", "switch_stmt", "case_clause", "default_clause"
 - Loop: "while_stmt", "for_stmt", "return_stmt", "break_stmt", "continue_stmt",
-- Expressions: "expression", "assignment", "assignment_operator", "conditional", "logical_or", "logical_and", "bit_or", "bit_xor", "bit_and", "equality", "relational", "shift", "additive", "multiplicative", "unary", "postfix", "primary", "argument_list", "initializer", "initializer_list", "function_literal"
+- Expressions: "expression", "assignment", "assignment_operator", "conditional", "logical_or", "logical_and", "bit_or", "bit_xor", "bit_and", "equality", "relational", "shift", "additive", "multiplicative", "unary", "postfix", "primary", "argument_list", "initializer", "designated_initializer_list", "designated_initializer", "function_literal"
 - Literals: "literal"
 - Type: "type", "builtin_type", "function_type", "parameter_type_list"
 
 # AST Node Classification
 
 - Sequence Chosen Nodes( { ... } or { X | Y | Z } ): program
-- Single Chosen Nodes( (X | Y | Z)... ): literal, type, builtin_type, assignment_operator, primary, initializer
-- List Nodes( X { "," X } ): parameter_list, declarator_list, parameter_type_list, argument_list, initializer_list, expression
-- Sequence Nodes( A B C ... ): function_definition, compound_stmt, declarator, struct_definition, if_stmt, switch_stmt, case_clause, default_clause, for_stmt, return_stmt, assignment, binary_expr, unary, function_type, function_literal
+- Single Chosen Nodes( (X | Y | Z)... ): literal, builtin_type, assignment_operator, primary, initializer
+- List Nodes( X { "," X } ): parameter_list, declarator_list, parameter_type_list, argument_list, designated_initializer_list, expression
+- Sequence Nodes( A B C ... ): function_definition, compound_stmt, declarator, struct_definition, if_stmt, switch_stmt, case_clause, default_clause, for_stmt, return_stmt, assignment, binary_expr, unary, designated_initializer, function_type, function_literal
 - Fix Nodes( A B C ): import_stmt, parameter, variable_declaration, struct_member_declaration, while_stmt, break_stmt, continue_stmt
-- Logic Nodes: statement, expression_stmt
+- Logic Nodes: statement, expression_stmt, type
 - Expression Nodes ( if only left return left else return new node after built relation )
-  - Sequence Relation: conditional
   - Left Associative: binary(logical_or, logical_and, bit_or, bit_xor, bit_and, equality, relational, shift, additive, multiplicative), postfix
-  - Right Associative: unary
+  - Right Associative: unary, conditional
 
 # Notes
 
@@ -130,3 +130,7 @@ parameter_type_list ::= type { "," type } ;
 - 变量定义时保留 let/const,否则 statement 可以推导为 expression_stmt 或 variable_declaration,二者的 first 集都有 identifier 会存在冲突
 
 - 表达式中根据优先级进行划分,同时要注意运算符的左右结合性
+
+- 构建语法树时如果某个节点下仅含有一个子节点将直接返回子节点以简化语法树
+
+- initializer 当为空时会返回一个 child 为空的 initializer 节点
