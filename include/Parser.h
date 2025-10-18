@@ -37,7 +37,7 @@ namespace CppInterp {
 		// --- Program structure ---
 		constexpr Type PROGRAM = 0;
 		constexpr Type IMPORT_STMT = 1;
-		constexpr Type FUNCTION_DEF = 2;
+		constexpr Type FUNCTION_DECL = 2;
 		constexpr Type PARAMETER_LIST = 3;
 		constexpr Type PARAMETER = 4;
 
@@ -56,10 +56,10 @@ namespace CppInterp {
 		constexpr Type RETURN_STMT = 21;
 		constexpr Type BREAK_STMT = 22;
 		constexpr Type CONTINUE_STMT = 23;
-		constexpr Type STRUCT_DEF = 24;
+		constexpr Type STRUCT_DECL = 24;
 		constexpr Type STRUCT_DECLARATOR_LIST = 25;
 		constexpr Type STRUCT_MEMBER_DECL = 26;
-		constexpr Type ARRAY = 26;
+		constexpr Type ARRAY_SIZE = 27;
 
 		// --- Expressions ---
 		constexpr Type EXPRESSION = 30;
@@ -86,7 +86,6 @@ namespace CppInterp {
 		constexpr Type BUILTIN_TYPE = 60;
 		constexpr Type FUNCTION_TYPE = 61;
 		constexpr Type PARAMETER_TYPE_LIST = 62;
-
 	};
 
 
@@ -95,7 +94,7 @@ namespace CppInterp {
 		switch (type) {
 		case NodeType::PROGRAM: return "PROGRAM";
 		case NodeType::IMPORT_STMT: return "IMPORT_STMT";
-		case NodeType::FUNCTION_DEF: return "FUNCTION_DEF";
+		case NodeType::FUNCTION_DECL: return "FUNCTION_DECL";
 		case NodeType::PARAMETER_LIST: return "PARAMETER_LIST";
 		case NodeType::PARAMETER: return "PARAMETER";
 
@@ -113,7 +112,7 @@ namespace CppInterp {
 		case NodeType::RETURN_STMT: return "RETURN_STMT";
 		case NodeType::BREAK_STMT: return "BREAK_STMT";
 		case NodeType::CONTINUE_STMT: return "CONTINUE_STMT";
-		case NodeType::STRUCT_DEF: return "STRUCT_DEF";
+		case NodeType::STRUCT_DECL: return "STRUCT_DECL";
 		case NodeType::STRUCT_DECLARATOR_LIST: return "STRUCT_DECLARATOR_LIST";
 		case NodeType::STRUCT_MEMBER_DECL: return "STRUCT_MEMBER_DECL";
 
@@ -174,6 +173,13 @@ namespace CppInterp {
 
 		static void PrintAstTree(AstNode* node, int depth = 0);
 	private:
+		inline void ClearNodes() {
+			for (auto node : m_nodes)
+				delete node;
+			m_nodes.clear();
+			m_root = nullptr;
+		}
+
 		void PreprocessTokens(std::vector<Token>& tokens); // distinguish keyword and identifier
 
 		inline const Token& Peek() {

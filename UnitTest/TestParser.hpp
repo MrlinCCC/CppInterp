@@ -77,7 +77,7 @@ std::vector<ParserCase> parserSimpleCases = {
 		{
 			NodeType::PROGRAM, "",
 			{
-				{ NodeType::FUNCTION_DEF, "function",
+				{ NodeType::FUNCTION_DECL, "function",
 					{
 						{ NodeType::BUILTIN_TYPE, "int", {} },
 						{ NodeType::IDENTIFIER, "add", {} },
@@ -180,7 +180,7 @@ std::vector<ParserCase> parserSimpleCases = {
 						{ NodeType::DECLARATOR, "",
 							{
 								{ NodeType::IDENTIFIER, "arr", {} },
-								{ NodeType::ARRAY, "", {
+								{ NodeType::ARRAY_SIZE, "", {
 									{ NodeType::LITERAL, "3", {} },
 								}},
 								{ NodeType::INITIALIZER, "",
@@ -208,7 +208,7 @@ std::vector<ParserCase> parserSimpleCases = {
 					{ NodeType::DECLARATOR, "",
 						{
 							{ NodeType::IDENTIFIER, "array", {} },
-							{ NodeType::ARRAY, "",
+							{ NodeType::ARRAY_SIZE, "",
 								{
 									{ NodeType::LITERAL, "3", {} },
 									{ NodeType::LITERAL, "3", {} }
@@ -262,7 +262,7 @@ std::vector<ParserCase> parserSimpleCases = {
 		{
 			NodeType::PROGRAM, "",
 			{
-				{ NodeType::STRUCT_DEF, "struct",
+				{ NodeType::STRUCT_DECL, "struct",
 					{
 						{ NodeType::IDENTIFIER, "Point", {} },
 						{ NodeType::STRUCT_DECLARATOR_LIST, "",
@@ -624,18 +624,15 @@ auto case1 = MakeNode(NodeType::PROGRAM, "", {
 	});
 
 
-const char* source2 = R"(function double compute((int, int) -> double f) { return f(1,2); })";
+const char* source2 = R"(function double compute((int) -> double f) { return f(1,2); })";
 
 auto case2 = MakeNode(NodeType::PROGRAM, "", {
-	MakeNode(NodeType::FUNCTION_DEF, "function", {
+	MakeNode(NodeType::FUNCTION_DECL, "function", {
 		MakeNode(NodeType::BUILTIN_TYPE, "double"),
 		MakeNode(NodeType::IDENTIFIER, "compute"),
 			MakeNode(NodeType::PARAMETER, "", {
 				MakeNode(NodeType::FUNCTION_TYPE, "", {
-					MakeNode(NodeType::PARAMETER_TYPE_LIST, "", {
-						MakeNode(NodeType::BUILTIN_TYPE, "int"),
-						MakeNode(NodeType::BUILTIN_TYPE, "int")
-					}),
+					MakeNode(NodeType::BUILTIN_TYPE, "int"),
 					MakeNode(NodeType::BUILTIN_TYPE, "double")
 				}),
 				MakeNode(NodeType::IDENTIFIER, "f"),
@@ -678,7 +675,7 @@ function void main() {
 )";
 
 auto case3 = MakeNode(NodeType::PROGRAM, "", {
-	MakeNode(NodeType::FUNCTION_DEF, "function", {
+	MakeNode(NodeType::FUNCTION_DECL, "function", {
 		MakeNode(NodeType::BUILTIN_TYPE, "int"),
 		MakeNode(NodeType::IDENTIFIER, "inc"),
 		MakeNode(NodeType::PARAMETER, "", {
@@ -694,7 +691,7 @@ auto case3 = MakeNode(NodeType::PROGRAM, "", {
 			})
 		})
 	}),
-	MakeNode(NodeType::FUNCTION_DEF, "function", {
+	MakeNode(NodeType::FUNCTION_DECL, "function", {
 		MakeNode(NodeType::BUILTIN_TYPE, "void"),
 		MakeNode(NodeType::IDENTIFIER, "main"),
 		MakeNode(NodeType::COMPOUND_STMT, "", {
@@ -775,7 +772,7 @@ function double test(int n) {
 
 auto case4 = MakeNode(NodeType::PROGRAM, "", {
 	// function double square(double x) { return x * x; }
-	MakeNode(NodeType::FUNCTION_DEF, "function", {
+	MakeNode(NodeType::FUNCTION_DECL, "function", {
 		MakeNode(NodeType::BUILTIN_TYPE, "double"),
 		MakeNode(NodeType::IDENTIFIER, "square"),
 		MakeNode(NodeType::PARAMETER, "", {
@@ -792,7 +789,7 @@ auto case4 = MakeNode(NodeType::PROGRAM, "", {
 		})
 	}),
 		// function test(int n) { ... }
-		MakeNode(NodeType::FUNCTION_DEF, "function", {
+		MakeNode(NodeType::FUNCTION_DECL, "function", {
 			MakeNode(NodeType::BUILTIN_TYPE, "double"),
 			MakeNode(NodeType::IDENTIFIER, "test"),
 			MakeNode(NodeType::PARAMETER, "", {
@@ -882,7 +879,7 @@ function void main() {
 
 auto case5 = MakeNode(NodeType::PROGRAM, "", {
 	// --- function int max(int a=5, b=12) ---
-	MakeNode(NodeType::FUNCTION_DEF, "function", {
+	MakeNode(NodeType::FUNCTION_DECL, "function", {
 		MakeNode(NodeType::BUILTIN_TYPE, "int"),
 		MakeNode(NodeType::IDENTIFIER, "max"),
 		MakeNode(NodeType::PARAMETER_LIST, "", {
@@ -918,7 +915,7 @@ auto case5 = MakeNode(NodeType::PROGRAM, "", {
 	}),
 
 		// --- function int clamp(int x, int low, int high) ---
-		MakeNode(NodeType::FUNCTION_DEF, "function", {
+		MakeNode(NodeType::FUNCTION_DECL, "function", {
 			MakeNode(NodeType::BUILTIN_TYPE, "int"),
 			MakeNode(NodeType::IDENTIFIER, "clamp"),
 			MakeNode(NodeType::PARAMETER_LIST, "", {
@@ -961,7 +958,7 @@ auto case5 = MakeNode(NodeType::PROGRAM, "", {
 		}),
 
 		// --- function void main() ---
-		MakeNode(NodeType::FUNCTION_DEF, "function", {
+		MakeNode(NodeType::FUNCTION_DECL, "function", {
 			MakeNode(NodeType::BUILTIN_TYPE, "void"),
 			MakeNode(NodeType::IDENTIFIER, "main"),
 			MakeNode(NodeType::COMPOUND_STMT, "", {
@@ -1045,7 +1042,7 @@ auto case6 = MakeNode(NodeType::PROGRAM, "", {
 		}),
 	}),
 
-	MakeNode(NodeType::FUNCTION_DEF, "function", {
+	MakeNode(NodeType::FUNCTION_DECL, "function", {
 		MakeNode(NodeType::BUILTIN_TYPE, "string"),
 		MakeNode(NodeType::IDENTIFIER, "printMessage"),
 		MakeNode(NodeType::COMPOUND_STMT, "", {
@@ -1056,7 +1053,7 @@ auto case6 = MakeNode(NodeType::PROGRAM, "", {
 		}),
 	}),
 
-	MakeNode(NodeType::FUNCTION_DEF, "function", {
+	MakeNode(NodeType::FUNCTION_DECL, "function", {
 		MakeNode(NodeType::BUILTIN_TYPE, "void"),
 		MakeNode(NodeType::IDENTIFIER, "main"),
 		MakeNode(NodeType::COMPOUND_STMT, "", {
@@ -1106,7 +1103,7 @@ function void main() {
 
 auto case7 = MakeNode(NodeType::PROGRAM, "", {
 	// --- struct def ---
-	MakeNode(NodeType::STRUCT_DEF, "struct", {
+	MakeNode(NodeType::STRUCT_DECL, "struct", {
 		MakeNode(NodeType::IDENTIFIER, "Point"),
 		MakeNode(NodeType::STRUCT_DECLARATOR_LIST, "", {
 			MakeNode(NodeType::STRUCT_MEMBER_DECL, "", {
@@ -1121,7 +1118,7 @@ auto case7 = MakeNode(NodeType::PROGRAM, "", {
 	}),
 
 		// --- sumArray ---
-		MakeNode(NodeType::FUNCTION_DEF, "function", {
+		MakeNode(NodeType::FUNCTION_DECL, "function", {
 			MakeNode(NodeType::BUILTIN_TYPE, "int"),
 			MakeNode(NodeType::IDENTIFIER, "sumArray"),
 			MakeNode(NodeType::PARAMETER_LIST, "", {
@@ -1202,7 +1199,7 @@ auto case7 = MakeNode(NodeType::PROGRAM, "", {
 		}),
 
 		// --- makePoint ---
-		MakeNode(NodeType::FUNCTION_DEF, "function", {
+		MakeNode(NodeType::FUNCTION_DECL, "function", {
 			MakeNode(NodeType::IDENTIFIER, "Point"),
 			MakeNode(NodeType::IDENTIFIER, "makePoint"),
 			MakeNode(NodeType::PARAMETER_LIST, "", {
@@ -1252,7 +1249,7 @@ auto case7 = MakeNode(NodeType::PROGRAM, "", {
 		}),
 
 		// --- main ---
-		MakeNode(NodeType::FUNCTION_DEF, "function", {
+		MakeNode(NodeType::FUNCTION_DECL, "function", {
 			MakeNode(NodeType::BUILTIN_TYPE, "void"),
 			MakeNode(NodeType::IDENTIFIER, "main"),
 			MakeNode(NodeType::COMPOUND_STMT, "", {
@@ -1260,7 +1257,7 @@ auto case7 = MakeNode(NodeType::PROGRAM, "", {
 					MakeNode(NodeType::BUILTIN_TYPE, "int"),
 					MakeNode(NodeType::DECLARATOR, "", {
 						MakeNode(NodeType::IDENTIFIER, "data"),
-						MakeNode(NodeType::ARRAY,"",{
+						MakeNode(NodeType::ARRAY_SIZE,"",{
 							MakeNode(NodeType::LITERAL, "4"),
 						}),
 						MakeNode(NodeType::INITIALIZER, "", {

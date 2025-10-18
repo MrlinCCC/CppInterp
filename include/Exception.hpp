@@ -56,3 +56,10 @@ public:
 		: LangException("ParserError", message, row, col) {
 	}
 };
+
+class SemanticException : public LangException {
+public:
+	SemanticException(const std::string& message, int row, int col)
+		: LangException("SemanticError", message, row, col) {
+	}
+};

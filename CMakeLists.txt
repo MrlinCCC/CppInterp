@@ -19,11 +19,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(CppInterpLib
    src/Lexer.cpp
    src/Parser.cpp
-)
+   src/SemanticAnalyzer.cpp)
 
 add_executable(CppInterp
     src/main.cpp
-)
+    src/SemanticAnalyzer.cpp)
 
 # TODO: 如有需要，请添加测试并安装目标。
 add_subdirectory(UnitTest)

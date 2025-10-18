@@ -45,7 +45,7 @@ void Parser::PreprocessTokens(std::vector<Token>& tokens) {
 
 AstNode* Parser::Parse(const std::string& str) {
 	m_tokens.clear();
-	m_nodes.clear();
+	ClearNodes();
 	m_tokens = Lexer::Instance().Tokenize(str);
 	PreprocessTokens(m_tokens);
 	m_current = 0;
@@ -55,7 +55,7 @@ AstNode* Parser::Parse(const std::string& str) {
 
 AstNode* Parser::Parse(const std::vector<Token>& tokens) {
 	m_tokens.clear();
-	m_nodes.clear();
+	ClearNodes();
 	m_tokens = tokens;
 	PreprocessTokens(m_tokens);
 	m_current = 0;
@@ -64,9 +64,7 @@ AstNode* Parser::Parse(const std::vector<Token>& tokens) {
 }
 
 Parser::~Parser() {
-	for (auto node : m_nodes) {
-		delete node;
-	}
+	ClearNodes();
 }
 
 AstNode* Parser::ParseProgram(AstNode* parent) {
@@ -128,7 +126,7 @@ AstNode* Parser::ParseImportStmt(AstNode* parent) {
 }
 
 AstNode* Parser::ParseFunctionDef(AstNode* parent) {
-	AstNode* node = new AstNode(NodeType::FUNCTION_DEF, parent);
+	AstNode* node = new AstNode(NodeType::FUNCTION_DECL, parent);
 	m_nodes.push_back(node);
 	//function
 	node->m_token = Peek();
@@ -340,7 +338,7 @@ AstNode* Parser::ParseDeclarator(AstNode* parent) {
 	// array
 	if (Check(TokenType::LEFT_SQUARE)) {
 		isComplex = true;
-		auto* arrayNode = new AstNode(NodeType::ARRAY, parent);
+		auto* arrayNode = new AstNode(NodeType::ARRAY_SIZE, parent);
 		m_nodes.push_back(arrayNode);
 		while (Match(TokenType::LEFT_SQUARE)) {
 			if (!Check(TokenType::RIGHT_SQUARE)) {
@@ -386,7 +384,7 @@ AstNode* Parser::ParseDeclarator(AstNode* parent) {
 
 
 AstNode* Parser::ParseStructDefinition(AstNode* parent) {
-	AstNode* node = new AstNode(NodeType::STRUCT_DEF, parent);
+	AstNode* node = new AstNode(NodeType::STRUCT_DECL, parent);
 	m_nodes.push_back(node);
 	//struct
 	node->m_token = Peek();
