@@ -275,41 +275,45 @@ namespace CppInterp {
 		AstNode* ParseBinary(AstNode* parent, std::function<AstNode* (AstNode*)> lower, const std::vector<TokenType::Type>& ops);
 
 		// X {splitToken X}
+		//template <typename ParseFunc>
+		//inline AstNode* ParseSeparatedListTemplate(
+		//	NodeType::Type type,
+		//	AstNode* parent,
+		//	ParseFunc parseElementFunc,
+		//	TokenType::Type splitToken = TokenType::COMMA
+		//) {
+		//	//element, if only one node direct return
+		//	AstNode* first = (this->*parseElementFunc)(parent);
+		//	if (!Check(splitToken))
+		//		return first;
+		//	//list parent
+		//	AstNode* node = new AstNode(type, parent);
+		//	m_nodes.push_back(node);
+		//	node->m_children.push_back(first);
+		//	first->m_parent = node;
+		//	//splitToken element
+		//	while (Match(splitToken)) {
+		//		node->m_children.push_back((this->*parseElementFunc)(node));
+		//	}
+		//	return node;
+		//}
 		template <typename ParseFunc>
 		inline AstNode* ParseSeparatedListTemplate(
 			NodeType::Type type,
 			AstNode* parent,
 			ParseFunc parseElementFunc,
-			TokenType::Type splitToken = TokenType::COMMA
-		) {
-			//element, if only one node direct return
-			AstNode* first = (this->*parseElementFunc)(parent);
-			if (!Check(splitToken))
-				return first;
-			//list parent
+			TokenType::Type splitToken = TokenType::COMMA)
+		{
 			AstNode* node = new AstNode(type, parent);
 			m_nodes.push_back(node);
-			node->m_children.push_back(first);
-			first->m_parent = node;
-			//splitToken element
-			while (Match(splitToken)) {
+			//element 
+			node->m_children.push_back((this->*parseElementFunc)(node)); // , element 
+			while (Match(splitToken))
+			{
 				node->m_children.push_back((this->*parseElementFunc)(node));
 			}
 			return node;
 		}
-		//template <typename ParseFunc>
-		//inline AstNode* ParseCommaSeparatedListTemplate(NodeType::Type type, AstNode* parent, ParseFunc parseElementFunc)
-		//{
-		//	AstNode* node = new AstNode(type, parent);
-		//	m_nodes.push_back(node);
-		//	//element 
-		//	node->m_children.push_back((this->*parseElementFunc)(node)); // , element 
-		//	while (Match(TokenType::COMMA))
-		//	{
-		//		node->m_children.push_back((this->*parseElementFunc)(node));
-		//	}
-		//	return node;
-		//}
 
 		int m_current = 0;
 		std::vector<Token> m_tokens;
