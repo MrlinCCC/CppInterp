@@ -12,7 +12,7 @@ statement ::=
       compound_stmt
     | expression_stmt
     | variable_declaration
-    | struct_definition
+    | struct_declaration
     | if_stmt
     | switch_stmt
     | while_stmt
@@ -25,7 +25,7 @@ expression_stmt ::= [ expression ] ";" ;
 variable_declaration ::= ("let" | "const") type declarator_list ";" ;
 declarator_list ::= declarator { "," declarator } ;
 declarator ::= identifier { "[" [ expression ] "]" } [ "=" initializer ] ;
-struct_definition ::= "struct" identifier "{" [ struct_declarator_list ] "}" ";" ;
+struct_declaration ::= "struct" identifier "{" [ struct_declarator_list ] "}" ";" ;
 struct_declarator_list ::= struct_member_declaration { struct_member_declaration } ;
 struct_member_declaration ::= type declarator_list ";" ;
 ------------- Condition --------------
@@ -63,9 +63,8 @@ primary ::= identifier
           | function_literal;
 argument_list ::= assignment { "," assignment } ;
 initializer ::= assignment
-              | "{" [ designated_initializer_list ] "}" ;
-designated_initializer_list ::= designated_initializer { "," designated_initializer } ;
-designated_initializer ::= [ "." identifier "=" ] initializer ;
+              | "{" [ initializer_list ] "}" ;
+initializer_list ::= initializer { "," initializer } ;
 function_literal ::= "lambda" "(" [ parameter_list ] ")" "->" type compound_stmt ;
 ---------------- Literals ----------------
 literal ::= INT_LITERAL
@@ -95,10 +94,10 @@ parameter_type_list ::= type { "," type } ;
 # Non-Terminal
 
 - Program: "program", "function_definition", "import_stmt", "parameter_list", "parameter",
-- Statement: "compound_stmt", "expression_stmt", "variable_declaration", "declarator_list", "declarator", "struct_definition", "struct_member_declaration"
+- Statement: "compound_stmt", "expression_stmt", "variable_declaration", "declarator_list", "declarator", "struct_declaration", "struct_member_declaration"
 - Condition: "if_stmt", "switch_stmt", "case_clause", "default_clause"
 - Loop: "while_stmt", "for_stmt", "return_stmt", "break_stmt", "continue_stmt",
-- Expressions: "expression", "assignment", "assignment_operator", "conditional", "logical_or", "logical_and", "bit_or", "bit_xor", "bit_and", "equality", "relational", "shift", "additive", "multiplicative", "unary", "postfix", "primary", "argument_list", "initializer", "designated_initializer_list", "designated_initializer", "function_literal"
+- Expressions: "expression", "assignment", "assignment_operator", "conditional", "logical_or", "logical_and", "bit_or", "bit_xor", "bit_and", "equality", "relational", "shift", "additive", "multiplicative", "unary", "postfix", "primary", "argument_list", "initializer", "initializer_list",, "function_literal"
 - Literals: "literal"
 - Type: "type", "builtin_type", "function_type", "parameter_type_list"
 
@@ -106,17 +105,25 @@ parameter_type_list ::= type { "," type } ;
 
 - Sequence Chosen Nodes( { ... } or { X | Y | Z } ): program
 - Single Chosen Nodes( (X | Y | Z)... ): literal, builtin_type, assignment_operator, primary, initializer
-- List Nodes( X { "," X } ): parameter_list, declarator_list, parameter_type_list, argument_list, designated_initializer_list, expression
-- Sequence Nodes( A B C ... ): function_definition, compound_stmt, declarator, struct_definition, if_stmt, switch_stmt, case_clause, default_clause, for_stmt, return_stmt, assignment, binary_expr, unary, designated_initializer, function_type, function_literal
+- List Nodes( X { "," X } ): parameter_list, declarator_list, parameter_type_list, argument_list
+- Sequence Nodes( A B C ... ): function_definition, compound_stmt, declarator, struct_declaration, if_stmt, switch_stmt, case_clause, default_clause, for_stmt, return_stmt, assignment, binary_expr, unary, function_type, function_literal, initializer_list
 - Fix Nodes( A B C ): import_stmt, parameter, variable_declaration, struct_member_declaration, while_stmt, break_stmt, continue_stmt
 - Logic Nodes: statement, expression_stmt, type
 - Expression Nodes ( if only left return left else return new node after built relation )
-  - Left Associative: binary(logical_or, logical_and, bit_or, bit_xor, bit_and, equality, relational, shift, additive, multiplicative), postfix
+  - Left Associative: expression, binary(logical_or, logical_and, bit_or, bit_xor, bit_and, equality, relational, shift, additive, multiplicative), postfix
   - Right Associative: unary, conditional
 
 # Notes
 
 - 该语法非严格 LL1，但可以通过递归下降法解析
+
+- 变量定义时保留 let/const,否则 statement 可以推导为 expression_stmt 或 variable_declaration,二者的 first 集都有 identifier 会存在冲突
+
+- 表达式中根据优先级进行划分,同时要注意运算符的左右结合性
+
+- 构建 expression 时如果某个节点下仅含有一个子节点将直接返回子节点以简化语法树, 当 expression 为空会创建一个类型为 empty_stmt 的节点
+
+- 除 expression 外其他节点统一结构，即使是可选项或仅有一个节点，也会创建一个额外的子节点
 
 - if dangling else 文法歧义上通过以下拆分解决, 但递归下降隐式会优先解析最深的 if, 可以很自然解决
 
@@ -126,11 +133,3 @@ parameter_type_list ::= type { "," type } ;
   unmatched_if ::= "if" "(" expression ")" statement ;
   matched_stmt ::= matched_if | statement ;
 ```
-
-- 变量定义时保留 let/const,否则 statement 可以推导为 expression_stmt 或 variable_declaration,二者的 first 集都有 identifier 会存在冲突
-
-- 表达式中根据优先级进行划分,同时要注意运算符的左右结合性
-
-- 构建语法树时如果某个节点下仅含有一个子节点将直接返回子节点以简化语法树
-
-- initializer 当为空时会返回一个 child 为空的 initializer 节点

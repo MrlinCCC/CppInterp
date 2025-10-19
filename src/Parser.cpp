@@ -1,4 +1,5 @@
 
+
 #include"Parser.h"
 #include "Exception.hpp"
 
@@ -159,6 +160,12 @@ AstNode* Parser::ParseFunctionDef(AstNode* parent) {
 	//parameter_list
 	if (!Check(TokenType::RIGHT_PAREN))
 		node->m_children.push_back(ParseParameterList(node));
+	else
+	{
+		auto* n = new AstNode(NodeType::PARAMETER_LIST, node);
+		m_nodes.push_back(n);
+		node->m_children.push_back(n);
+	}
 	//)
 	if (!Match(TokenType::RIGHT_PAREN)) {
 		const Token& token = Peek();
@@ -199,7 +206,7 @@ AstNode* Parser::ParseStatement(AstNode* parent) {
 		node = ParseCompoundStmt(parent);
 		break;
 	case TokenType::STRUCT:
-		node = ParseStructDefinition(parent);
+		node = ParseStructDeclaration(parent);
 		break;
 	case TokenType::IF:
 		node = ParseIfStmt(parent);
@@ -322,6 +329,8 @@ AstNode* Parser::ParseDeclaratorList(AstNode* parent) {
 
 AstNode* Parser::ParseDeclarator(AstNode* parent) {
 	// identifier
+	AstNode* declarator = new AstNode(NodeType::DECLARATOR, parent);
+	m_nodes.push_back(declarator);
 	const Token& token = Peek();
 	if (!Match(TokenType::IDENTIFIER)) {
 		throw ParserException(
@@ -330,16 +339,15 @@ AstNode* Parser::ParseDeclarator(AstNode* parent) {
 			token.m_column
 		);
 	}
-	AstNode* identifier = new AstNode(NodeType::IDENTIFIER, token, parent);
+	AstNode* identifier = new AstNode(NodeType::IDENTIFIER, token, declarator);
 	m_nodes.push_back(identifier);
+	declarator->m_children.push_back(identifier);
 
-	bool isComplex = false;
-	std::vector<AstNode*> extraChildren;
 	// array
+	auto* arrayNode = new AstNode(NodeType::ARRAY_SIZE, declarator);
+	m_nodes.push_back(arrayNode);
+	declarator->m_children.push_back(arrayNode);
 	if (Check(TokenType::LEFT_SQUARE)) {
-		isComplex = true;
-		auto* arrayNode = new AstNode(NodeType::ARRAY_SIZE, parent);
-		m_nodes.push_back(arrayNode);
 		while (Match(TokenType::LEFT_SQUARE)) {
 			if (!Check(TokenType::RIGHT_SQUARE)) {
 				arrayNode->m_children.push_back(ParseExpression(arrayNode));
@@ -357,33 +365,21 @@ AstNode* Parser::ParseDeclarator(AstNode* parent) {
 				);
 			}
 		}
-
-		extraChildren.push_back(arrayNode);
 	}
 	// initializer
 	if (Match(TokenType::ASSIGN)) {
-		isComplex = true;
-		AstNode* initializer = ParseInitializer(nullptr);
-		extraChildren.push_back(initializer);
+		declarator->m_children.push_back(ParseInitializer(declarator));
 	}
-	// if complex (array or initializer), wrap in DECLARATOR
-	if (isComplex) {
-		AstNode* declarator = new AstNode(NodeType::DECLARATOR, parent);
-		m_nodes.push_back(declarator);
-		declarator->m_children.push_back(identifier);
-		identifier->m_parent = declarator;
-		for (auto* c : extraChildren) {
-			declarator->m_children.push_back(c);
-			c->m_parent = declarator;
-		}
-		return declarator;
+	else {
+		// no initializer
+		auto* n = new AstNode(NodeType::INITIALIZER, declarator);
+		m_nodes.push_back(n);
+		declarator->m_children.push_back(n);
 	}
-	// simple identifier only
-	return identifier;
+	return declarator;
 }
 
-
-AstNode* Parser::ParseStructDefinition(AstNode* parent) {
+AstNode* Parser::ParseStructDeclaration(AstNode* parent) {
 	AstNode* node = new AstNode(NodeType::STRUCT_DECL, parent);
 	m_nodes.push_back(node);
 	//struct
@@ -413,8 +409,13 @@ AstNode* Parser::ParseStructDefinition(AstNode* parent) {
 		);
 	}
 	//struct member declaration
-	while (!Check(TokenType::RIGHT_BRACE)) {
+	if (!Check(TokenType::RIGHT_BRACE)) {
 		node->m_children.push_back(ParseStructDecaratorList(node));
+	}
+	else {
+		auto* n = new AstNode(NodeType::STRUCT_DECLARATOR_LIST, node);
+		m_nodes.push_back(n);
+		node->m_children.push_back(n);
 	}
 	//}
 	if (!Match(TokenType::RIGHT_BRACE)) {
@@ -439,15 +440,8 @@ AstNode* Parser::ParseStructDefinition(AstNode* parent) {
 
 //struct_member_declaration { struct_member_declaration }
 AstNode* Parser::ParseStructDecaratorList(AstNode* parent) {
-	//element, if only one node direct return
-	AstNode* first = ParseStructMemberDeclaration(parent);
-	if (Check(TokenType::RIGHT_BRACE))
-		return first;
-	//list parent
 	AstNode* node = new AstNode(NodeType::STRUCT_DECLARATOR_LIST, parent);
 	m_nodes.push_back(node);
-	node->m_children.push_back(first);
-	first->m_parent = node;
 	//{ struct_member_declaration }
 	while (!Check(TokenType::RIGHT_BRACE)) {
 		node->m_children.push_back(ParseStructMemberDeclaration(node));
@@ -508,6 +502,11 @@ AstNode* Parser::ParseIfStmt(AstNode* parent) {
 		AstNode* elseBranch = ParseStatement(node);
 		node->m_children.push_back(elseBranch);
 	}
+	else {
+		auto* n = new AstNode(NodeType::EMPTY_STMT, node);
+		m_nodes.push_back(n);
+		node->m_children.push_back(n);
+	}
 	return node;
 }
 
@@ -553,6 +552,11 @@ AstNode* Parser::ParseSwitchStmt(AstNode* parent) {
 	//default
 	if (Check(TokenType::DEFAULT)) {
 		node->m_children.push_back(ParseDefaultClause(node));
+	}
+	else {
+		auto* n = new AstNode(NodeType::DEFAULT_CLAUSE, node);
+		m_nodes.push_back(n);
+		node->m_children.push_back(n);
 	}
 	//}
 	if (!Match(TokenType::RIGHT_BRACE)) {
@@ -673,6 +677,11 @@ AstNode* Parser::ParseForStmt(AstNode* parent) {
 		else
 			node->m_children.push_back(ParseExpression(node));
 	}
+	else {
+		auto* n = new AstNode(NodeType::EMPTY_STMT, node);
+		m_nodes.push_back(n);
+		node->m_children.push_back(n);
+	}
 	//;
 	if (!Match(TokenType::SEMICOLON)) {
 		const Token& token = Peek();
@@ -686,6 +695,11 @@ AstNode* Parser::ParseForStmt(AstNode* parent) {
 	if (!Check(TokenType::SEMICOLON)) {
 		node->m_children.push_back(ParseExpression(node));
 	}
+	else {
+		auto* n = new AstNode(NodeType::EMPTY_STMT, node);
+		m_nodes.push_back(n);
+		node->m_children.push_back(n);
+	}
 	//;
 	if (!Match(TokenType::SEMICOLON)) {
 		const Token& token = Peek();
@@ -698,6 +712,11 @@ AstNode* Parser::ParseForStmt(AstNode* parent) {
 	//increment
 	if (!Check(TokenType::RIGHT_PAREN)) {
 		node->m_children.push_back(ParseExpression(node));
+	}
+	else {
+		auto* n = new AstNode(NodeType::EMPTY_STMT, node);
+		m_nodes.push_back(n);
+		node->m_children.push_back(n);
 	}
 	//)
 	if (!Match(TokenType::RIGHT_PAREN)) {
@@ -722,6 +741,11 @@ AstNode* Parser::ParseReturnStmt(AstNode* parent) {
 	//expression
 	if (!Check(TokenType::SEMICOLON)) {
 		node->m_children.push_back(ParseExpression(node));
+	}
+	else {
+		auto* n = new AstNode(NodeType::EMPTY_STMT, node);
+		m_nodes.push_back(n);
+		node->m_children.push_back(n);
 	}
 	//;
 	if (!Match(TokenType::SEMICOLON)) {
@@ -773,7 +797,19 @@ AstNode* Parser::ParseContinueStmt(AstNode* parent) {
 
 AstNode* Parser::ParseExpression(AstNode* parent) {
 	//assignment {, assignment}
-	return ParseSeparatedListTemplate(NodeType::EXPRESSION, parent, &Parser::ParseAssignment);
+	AstNode* first = ParseAssignment(parent);
+	if (!Check(TokenType::COMMA))
+		return first;
+	//list parent
+	AstNode* node = new AstNode(TokenType::COMMA, parent);
+	m_nodes.push_back(node);
+	node->m_children.push_back(first);
+	first->m_parent = node;
+	//splitToken element
+	while (Match(TokenType::COMMA)) {
+		node->m_children.push_back(ParseAssignment(node));
+	}
+	return node;
 }
 
 AstNode* Parser::ParseAssignment(AstNode* parent) {
@@ -991,6 +1027,11 @@ AstNode* Parser::ParsePostfix(AstNode* parent) {
 			if (!Check(TokenType::RIGHT_PAREN)) {
 				call->m_children.push_back(ParseArgumentList(call));
 			}
+			else {
+				auto* n = new AstNode(NodeType::ARGUMENT_LIST, call);
+				m_nodes.push_back(n);
+				call->m_children.push_back(n);
+			}
 			// )
 			if (!Match(TokenType::RIGHT_PAREN)) {
 				const Token& token = Peek();
@@ -1072,80 +1113,37 @@ AstNode* Parser::ParseArgumentList(AstNode* parent) {
 }
 
 AstNode* Parser::ParseInitializer(AstNode* parent) {
-	// {
-	if (Match(TokenType::LEFT_BRACE)) {
-		//{}
-		if (Match(TokenType::RIGHT_BRACE)) {
-			auto node = new AstNode(NodeType::INITIALIZER, parent);
-			m_nodes.push_back(node);
-			return node;
-		}
+	if (!Check(TokenType::LEFT_BRACE)) {
+		return ParseAssignment(parent);
+	}
 
-		// designated_initializer_list
-		AstNode* node = ParseDesignatedInitializerList(parent);
-
-		// }
-		if (!Match(TokenType::RIGHT_BRACE)) {
-			const Token& token = Peek();
-			throw ParserException(
-				"Invalid initializer: expected '}' at end of initializer list",
-				token.m_line,
-				token.m_column
-			);
-		}
-
+	auto node = new AstNode(NodeType::INITIALIZER, parent);
+	m_nodes.push_back(node);
+	//{
+	Match(TokenType::LEFT_BRACE);
+	//{}
+	if (Match(TokenType::RIGHT_BRACE)) {
 		return node;
 	}
 
-	// assignment
-	return ParseAssignment(parent);
-}
-
-//designated_initializer { "," designated_initializer }
-AstNode* Parser::ParseDesignatedInitializerList(AstNode* parent) {
-	return ParseSeparatedListTemplate(NodeType::INITIALIZER, parent, &Parser::ParseDesignatedInitializer);
-}
-
-//[ "." identifier "=" ] initializer
-AstNode* Parser::ParseDesignatedInitializer(AstNode* parent) {
-	if (Check(TokenType::DOT)) {
-		AstNode* node = new AstNode(NodeType::DESIGNATED_INITIALIZER, parent);
-		m_nodes.push_back(node);
-		//.
-		node->m_token = Peek();
-		Consume();
-		//identifier
-		{
-			const Token& token = Peek();
-			if (!Match(TokenType::IDENTIFIER)) {
-				throw ParserException(
-					"Invalid designated initializer: '" + token.m_content + "', expected identifier after '.'",
-					token.m_line,
-					token.m_column
-				);
-			}
-			AstNode* idNode = new AstNode(NodeType::IDENTIFIER, token, node);
-			node->m_children.push_back(idNode);
-			m_nodes.push_back(idNode);
-		}
-		//=
-		if (!Match(TokenType::ASSIGN)) {
-			const Token& token = Peek();
-			throw ParserException(
-				"Invalid designated initializer: '" + token.m_content + "', expected '=' after identifier",
-				token.m_line,
-				token.m_column
-			);
-		}
-		//initializer
+	while (true) {
 		node->m_children.push_back(ParseInitializer(node));
-		return node;
+		if (Match(TokenType::COMMA)) {
+			continue;
+		}
+		if (Match(TokenType::RIGHT_BRACE)) {
+			break;
+		}
+		const Token& token = Peek();
+		throw ParserException(
+			"Invalid initializer: expected ',' or '}'",
+			token.m_line,
+			token.m_column
+		);
 	}
-	else {
-		//initializer
-		return ParseInitializer(parent);
-	}
+	return node;
 }
+
 
 AstNode* Parser::ParseFunctionLiteral(AstNode* parent) {
 	AstNode* node = new AstNode(NodeType::FUNCTION_LITERAL, parent);
@@ -1171,6 +1169,11 @@ AstNode* Parser::ParseFunctionLiteral(AstNode* parent) {
 	//parameter_list
 	if (!Check(TokenType::RIGHT_PAREN)) {
 		node->m_children.push_back(ParseParameterList(node));
+	}
+	else {
+		auto* n = new AstNode(NodeType::PARAMETER_LIST, node);
+		m_nodes.push_back(n);
+		node->m_children.push_back(n);
 	}
 	//)
 	if (!Match(TokenType::RIGHT_PAREN)) {
@@ -1273,6 +1276,11 @@ AstNode* Parser::ParseFunctionType(AstNode* parent) {
 	//parameter_type_list
 	if (!Check(TokenType::RIGHT_PAREN)) {
 		node->m_children.push_back(ParseParameterTypeList(node));
+	}
+	else {
+		auto* n = new AstNode(NodeType::PARAMETER_TYPE_LIST, node);
+		m_nodes.push_back(n);
+		node->m_children.push_back(n);
 	}
 	//)
 	if (!Match(TokenType::RIGHT_PAREN)) {

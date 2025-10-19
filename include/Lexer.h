@@ -207,7 +207,7 @@ namespace CppInterp {
 		JUMP,
 		CLEAR,
 		NEWLINE,
-		ESCAPE
+		ESCAPE,
 	};
 
 	struct Transition {

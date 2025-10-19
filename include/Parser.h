@@ -73,9 +73,8 @@ namespace CppInterp {
 		constexpr Type MEMBER_EXPR = 38;
 		constexpr Type GROUP_EXPR = 40; //( expression )
 		constexpr Type INITIALIZER = 41;
-		constexpr Type DESIGNATED_INITIALIZER = 42;
-		constexpr Type ARGUMENT_LIST = 43;
-		constexpr Type FUNCTION_LITERAL = 44;
+		constexpr Type ARGUMENT_LIST = 42;
+		constexpr Type FUNCTION_LITERAL = 43;
 
 		// --- Primary ---
 		constexpr Type PRIMARY = 50;
@@ -115,6 +114,7 @@ namespace CppInterp {
 		case NodeType::STRUCT_DECL: return "STRUCT_DECL";
 		case NodeType::STRUCT_DECLARATOR_LIST: return "STRUCT_DECLARATOR_LIST";
 		case NodeType::STRUCT_MEMBER_DECL: return "STRUCT_MEMBER_DECL";
+		case NodeType::ARRAY_SIZE: return "ARRAY_SIZE";
 
 		case NodeType::EXPRESSION: return "EXPRESSION";
 		case NodeType::ASSIGN_EXPR: return "ASSIGN_EXPR";
@@ -127,7 +127,6 @@ namespace CppInterp {
 		case NodeType::MEMBER_EXPR: return "MEMBER_EXPR";
 		case NodeType::GROUP_EXPR: return "GROUP_EXPR";
 		case NodeType::INITIALIZER: return "INITIALIZER";
-		case NodeType::DESIGNATED_INITIALIZER: return "DESIGNATED_INITIALIZER";
 		case NodeType::ARGUMENT_LIST: return "ARGUMENT_LIST";
 		case NodeType::FUNCTION_LITERAL: return "FUNCTION_LITERAL";
 
@@ -230,7 +229,7 @@ namespace CppInterp {
 		AstNode* ParseVariableDeclaration(AstNode* parent, bool consumeSemicolo = true);
 		AstNode* ParseDeclaratorList(AstNode* parent);
 		AstNode* ParseDeclarator(AstNode* parent);
-		AstNode* ParseStructDefinition(AstNode* parent);
+		AstNode* ParseStructDeclaration(AstNode* parent);
 		AstNode* ParseStructDecaratorList(AstNode* parent);
 		AstNode* ParseStructMemberDeclaration(AstNode* parent);
 		AstNode* ParseIfStmt(AstNode* parent);
@@ -261,8 +260,6 @@ namespace CppInterp {
 		AstNode* ParsePrimary(AstNode* parent);
 		AstNode* ParseArgumentList(AstNode* parent);
 		AstNode* ParseInitializer(AstNode* parent);
-		AstNode* ParseDesignatedInitializerList(AstNode* parent);
-		AstNode* ParseDesignatedInitializer(AstNode* parent);
 		AstNode* ParseFunctionLiteral(AstNode* parent);
 
 		AstNode* ParseLiteral(AstNode* parent);
@@ -297,6 +294,7 @@ namespace CppInterp {
 		//	}
 		//	return node;
 		//}
+
 		template <typename ParseFunc>
 		inline AstNode* ParseSeparatedListTemplate(
 			NodeType::Type type,

@@ -22,6 +22,7 @@ namespace CppInterp {
 	class VariableDecl;
 	class Declarator;
 	class StructDef;
+	class InitializerExpr;
 	class ConditionalExpr;
 	class AssignmentExpr;
 	class BinaryExpr;
@@ -52,6 +53,7 @@ namespace CppInterp {
 		virtual void Visit(VariableDecl& node) = 0;
 		virtual void Visit(Declarator& node) = 0;
 		virtual void Visit(StructDef& node) = 0;
+		virtual void Visit(InitializerExpr& node) = 0;
 		virtual void Visit(ConditionalExpr& node) = 0;
 		virtual void Visit(AssignmentExpr& node) = 0;
 		virtual void Visit(BinaryExpr& node) = 0;
@@ -219,7 +221,7 @@ namespace CppInterp {
 			visitor.Visit(*this);
 		};
 		bool m_isConst;
-		TypeInfo m_type;
+		TypeInfo* m_type;
 		std::vector<Declarator*> m_declarators;
 	};
 
@@ -241,6 +243,13 @@ namespace CppInterp {
 	};
 
 	struct Expression : SemanticAstNode {};
+
+	struct InitializerExpr : Expression {
+		inline void Accept(AstVisitor& visitor) override {
+			visitor.Visit(*this);
+		};
+		std::vector<std::pair<std::string, Expression*>> m_designatedInitializers;
+	};
 
 	struct ConditionalExpr : Expression {
 		inline void Accept(AstVisitor& visitor) override {
@@ -341,13 +350,10 @@ namespace CppInterp {
 		SemanticAstNode* ConvertImportStmt(AstNode* node);
 		SemanticAstNode* ConvertFunctionDecl(AstNode* node);
 
-		SemanticAstNode* ConvertParameterList(AstNode* node);
-		SemanticAstNode* ConvertParameter(AstNode* node);
 		SemanticAstNode* ConvertCompoundStmt(AstNode* node);
 		SemanticAstNode* ConvertEmptyStmt(AstNode* node);
 		SemanticAstNode* ConvertVariableDecl(AstNode* node);
 		SemanticAstNode* ConvertDeclaratorList(AstNode* node);
-		SemanticAstNode* ConvertDeclarator(AstNode* node);
 		SemanticAstNode* ConvertIfStmt(AstNode* node);
 		SemanticAstNode* ConvertCaseClause(AstNode* node);
 		SemanticAstNode* ConvertWhileStmt(AstNode* node);
@@ -359,7 +365,6 @@ namespace CppInterp {
 		SemanticAstNode* ConvertStructDecl(AstNode* node);
 		SemanticAstNode* ConvertStructDeclaratorList(AstNode* node);
 		SemanticAstNode* ConvertMemberDecl(AstNode* node);
-		SemanticAstNode* ConvertArraySize(AstNode* node);
 		SemanticAstNode* ConvertExpression(AstNode* node);
 		SemanticAstNode* ConvertAssignExpr(AstNode* node);
 		SemanticAstNode* ConvertConditionExpr(AstNode* node);
@@ -378,7 +383,11 @@ namespace CppInterp {
 		SemanticAstNode* ConvertLiteral(AstNode* node);
 		SemanticAstNode* ConvertParameterTypeList(AstNode* node);
 
+		Declarator* ConvertDeclarator(AstNode* node);
+		std::vector<VariableDecl*> ConvertParameterList(AstNode* node);
+		VariableDecl* ConvertParameter(AstNode* node);
 		TypeInfo* ConvertType(AstNode* node);
+		std::vector<Expression*> ConvertArraySize(AstNode* node);
 
 
 		using NodeConvertFunc = std::function<SemanticAstNode* (AstNode*)>;

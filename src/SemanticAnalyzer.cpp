@@ -113,8 +113,6 @@ namespace CppInterp {
 			return ConvertImportStmt(node);
 		case NodeType::FUNCTION_DECL:
 			return ConvertFunctionDecl(node);
-		case NodeType::PARAMETER_LIST:
-			return ConvertParameterList(node);
 		case NodeType::PARAMETER:
 			return ConvertParameter(node);
 		case NodeType::COMPOUND_STMT:
@@ -149,8 +147,6 @@ namespace CppInterp {
 			return ConvertStructDeclaratorList(node);
 		case NodeType::STRUCT_MEMBER_DECL:
 			return ConvertMemberDecl(node);
-		case NodeType::ARRAY_SIZE:
-			return ConvertArraySize(node);
 		case NodeType::EXPRESSION:
 			return ConvertExpression(node);
 		case NodeType::ASSIGN_EXPR:
@@ -173,8 +169,6 @@ namespace CppInterp {
 			return ConvertGroupExpr(node);
 		case NodeType::INITIALIZER:
 			return ConvertInitializer(node);
-		case NodeType::DESIGNATED_INITIALIZER:
-			return ConvertDesignedInitializer(node);
 		case NodeType::ARGUMENT_LIST:
 			return ConvertArgumentList(node);
 		case NodeType::FUNCTION_LITERAL:
@@ -214,19 +208,12 @@ namespace CppInterp {
 		auto* cur = new FunctionDecl();
 		cur->m_returnType = ConvertType(node->m_children[0]);
 		cur->m_name = node->m_children[1]->m_token.m_content;
-
+		cur->m_parameters = ConvertParameterList(node->m_children[2]);
 		cur->m_body = dynamic_cast<CompoundStmt*>(ConvertCompoundStmt(node->m_children[3]));
 		m_nodes.push_back(cur);
 		return cur;
 	}
-	SemanticAstNode* AstConverter::ConvertParameterList(AstNode* node) {
-		auto* cur = new FunctionDecl();
-		return cur;
-	}
-	SemanticAstNode* AstConverter::ConvertParameter(AstNode* node) {
-		auto* cur = new FunctionDecl();
-		return cur;
-	}
+
 	SemanticAstNode* AstConverter::ConvertCompoundStmt(AstNode* node) {
 		auto* cur = new FunctionDecl();
 		return cur;
@@ -235,16 +222,17 @@ namespace CppInterp {
 		auto* cur = new FunctionDecl();
 		return cur;
 	}
-	SemanticAstNode* AstConverter::ConvertVariableDecl(AstNode* node) {
-		auto* cur = new FunctionDecl();
-		return cur;
-	}
-	SemanticAstNode* AstConverter::ConvertDeclaratorList(AstNode* node) {
-		auto* cur = new FunctionDecl();
-		return cur;
-	}
-	SemanticAstNode* AstConverter::ConvertDeclarator(AstNode* node) {
-		auto* cur = new FunctionDecl();
+	Declarator* AstConverter::ConvertDeclarator(AstNode* node) {
+		auto* cur = new Declarator();
+		int childNums = node->m_children.size();
+		assert(childNums >= 1);
+		cur->m_name = node->m_children[0]->m_token.m_content;
+		if (childNums > 1) {
+			cur->m_arrayDimensions = ConvertArraySize(node->m_children[1]);
+		}
+		if (childNums > 2) {
+			cur->m_initializer = dynamic_cast<Expression*>(ConvertNode(node->m_children[2]));
+		}
 		return cur;
 	}
 	SemanticAstNode* AstConverter::ConvertIfStmt(AstNode* node) {
@@ -291,10 +279,6 @@ namespace CppInterp {
 		auto* cur = new FunctionDecl();
 		return cur;
 	}
-	SemanticAstNode* AstConverter::ConvertArraySize(AstNode* node) {
-		auto* cur = new FunctionDecl();
-		return cur;
-	}
 	SemanticAstNode* AstConverter::ConvertExpression(AstNode* node) {
 		auto* cur = new FunctionDecl();
 		return cur;
@@ -335,10 +319,6 @@ namespace CppInterp {
 		auto* cur = new FunctionDecl();
 		return cur;
 	}
-	SemanticAstNode* AstConverter::ConvertInitializer(AstNode* node) {
-		auto* cur = new FunctionDecl();
-		return cur;
-	}
 	SemanticAstNode* AstConverter::ConvertDesignedInitializer(AstNode* node) {
 		auto* cur = new FunctionDecl();
 		return cur;
@@ -364,6 +344,35 @@ namespace CppInterp {
 		return cur;
 	}
 
+	std::vector<VariableDecl*> AstConverter::ConvertParameterList(AstNode* node) {
+		std::vector<VariableDecl*> params;
+		for (auto paramNode : node->m_children[2]->m_children) {
+			params.push_back(ConvertParameter(paramNode));
+		}
+		return params;
+	}
+
+	VariableDecl* AstConverter::ConvertParameter(AstNode* node) {
+		auto* cur = new VariableDecl();
+		assert(node->m_children.size() == 2);
+		AstNode* typeNode = node->m_children[0];
+		cur->m_isConst = node->m_token.m_type == TokenType::CONST ? true : false;
+		cur->m_type = ConvertType(typeNode);
+		if (node->m_children.size() > 1 && node->m_children[1]->m_type == NodeType::ARRAY_SIZE) {
+			cur->m_type = m_typeRegistry.GetOrCreateArray(cur->m_type);
+		}
+		cur->m_declarators.push_back(ConvertDeclarator(node->m_children[1]));
+		return cur;
+	}
+
+	SemanticAstNode* AstConverter::ConvertInitializer(AstNode* node) {
+		auto* cur = new InitializerExpr();
+		for (auto* child : node->m_children) {
+
+		}
+		return cur;
+	}
+
 	TypeInfo* AstConverter::ConvertType(AstNode* node) {
 		const Token& token = node->m_token;
 		switch (node->m_type)
@@ -383,7 +392,7 @@ namespace CppInterp {
 				return optType.value();
 			}
 			else {
-				throw SemanticException("Unknown user-defined type: " + token.m_content, token.m_column, token.m_line);
+				return m_typeRegistry.RegisterStruct(token.m_content);
 			}
 		}
 		case NodeType::FUNCTION_TYPE:
@@ -412,8 +421,12 @@ namespace CppInterp {
 		}
 	}
 
-	SemanticAstNode* AstConverter::ConvertParameterList(AstNode* node) {
-
+	std::vector<Expression*> AstConverter::ConvertArraySize(AstNode* node) {
+		std::vector<Expression*> dimens;
+		for (auto* dim : node->m_children) {
+			dimens.push_back(dynamic_cast<Expression*>(ConvertNode(dim)));
+		}
+		return dimens;
 	}
 
 	SemanticAnalyzer::SemanticAnalyzer(AstNode* astRoot) :m_astRoot(astRoot) {
