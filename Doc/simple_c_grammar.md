@@ -41,7 +41,7 @@ break_stmt ::= "break" ";" ;
 continue_stmt ::= "continue" ";" ;
 
 ---------------- Expressions ----------------
-expression ::= assignment { "," assignment } ;
+expression ::= assignment { "," assignment } ;  (expression即comma_expression)
 assignment ::= conditional [ assignment_operator assignment ] ;
 assignment_operator ::= "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>=" ;
 conditional ::= logical_or [ "?" expression ":" conditional ] ;
@@ -56,12 +56,11 @@ shift ::= additive { ("<<" | ">>") additive } ;
 additive ::= multiplicative { ("+" | "-") multiplicative } ;
 multiplicative ::= unary { ("*" | "/" | "%") unary } ;
 unary ::= {("+" | "-" | "!" | "~" | "++" | "--")} postfix ;
-postfix ::= primary { ("++" | "--" | "." identifier | "[" expression "]" | "(" [ argument_list ] ")") } ;
+postfix ::= primary { ("++" | "--" | "." identifier | "[" expression "]" | "(" [ assignment { "," assignment } ] ")") } ;
 primary ::= identifier
           | literal
           | "(" expression ")"
           | function_literal;
-argument_list ::= assignment { "," assignment } ;
 initializer ::= assignment
               | "{" [ initializer_list ] "}" ;
 initializer_list ::= initializer { "," initializer } ;
@@ -75,7 +74,7 @@ literal ::= INT_LITERAL
           | NULL_LITERAL ;
 
 ---------------- Type ----------------
-type ::= builtin_type | identifier | function_type;
+type ::= builtin_type | identifier | function_type  {"[" "]"};
 builtin_type ::= "int" | "double" | "char" | "string" | "bool" | "void" ;
 function_type ::= "(" [ parameter_type_list ] ")" "->" type ;
 parameter_type_list ::= type { "," type } ;
